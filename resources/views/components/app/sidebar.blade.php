@@ -81,6 +81,117 @@
                             </ul>
                         </div>
                     </li>
+
+                    <!-- Master Data -->
+                    @canany(['view departments', 'view users', 'view kpi templates', 'view capa'])
+                    <li class="pl-4 pr-3 py-2 rounded-lg mb-0.5 last:mb-0 bg-linear-to-r @if(Request::segment(1) === 'master'){{ 'from-violet-500/[0.12] dark:from-violet-500/[0.24] to-violet-500/[0.04]' }}@endif" x-data="{ open: {{ Request::segment(1) === 'master' ? 1 : 0 }} }">
+                        <a class="block text-gray-800 dark:text-gray-100 truncate transition @if(Request::segment(1) !== 'master'){{ 'hover:text-gray-900 dark:hover:text-white' }}@endif" href="#0" @click.prevent="open = !open; sidebarExpanded = true">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <svg class="shrink-0 fill-current @if(Request::segment(1) === 'master'){{ 'text-violet-500' }}@else{{ 'text-gray-400 dark:text-gray-500' }}@endif" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                                        <path d="M2 6H0V2a2 2 0 012-2h4v2H2v4zm12-4h-4V0h4a2 2 0 012 2v4h-2V2zM0 10h2v4h4v2H2a2 2 0 01-2-2v-4zm14 0h2v4a2 2 0 01-2 2h-4v-2h4v-4zM6 2h4v2H6V2zm0 10h4v2H6v-2zm-2-8h2v8H4V4zm6 0h2v8h-2V4z" />
+                                    </svg>
+                                    <span class="text-sm font-medium ml-4 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Master Data</span>
+                                </div>
+                                <!-- Icon -->
+                                <div class="flex shrink-0 ml-2 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">
+                                    <svg class="w-3 h-3 shrink-0 ml-1 fill-current text-gray-400 dark:text-gray-500 @if(Request::segment(1) === 'master'){{ 'rotate-180' }}@endif" :class="open ? 'rotate-180' : 'rotate-0'" viewBox="0 0 12 12">
+                                        <path d="M5.9 11.4L.5 6l1.4-1.4 4 4 4-4L11.3 6z" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </a>
+                        <div class="lg:hidden lg:sidebar-expanded:block 2xl:block">
+                            <ul class="pl-8 mt-1 @if(Request::segment(1) !== 'master'){{ 'hidden' }}@endif" :class="open ? 'block!' : 'hidden'">
+                                @can('view departments')
+                                <li class="mb-1 last:mb-0">
+                                    <a class="block text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition truncate @if(Request::is('master/departments*')){{ 'text-violet-500!' }}@endif" href="{{ route('master.departments.index') }}">
+                                        <span class="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Departments</span>
+                                    </a>
+                                </li>
+                                @endcan
+                                @can('view users')
+                                <li class="mb-1 last:mb-0">
+                                    <a class="block text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition truncate @if(Request::is('master/users*')){{ 'text-violet-500!' }}@endif" href="{{ route('master.users.index') }}">
+                                        <span class="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Users</span>
+                                    </a>
+                                </li>
+                                @endcan
+                                @can('view kpi templates')
+                                <li class="mb-1 last:mb-0">
+                                    <a class="block text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition truncate @if(Request::is('master/kpi-templates*')){{ 'text-violet-500!' }}@endif" href="{{ route('master.kpi-templates.index') }}">
+                                        <span class="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">KPI Templates</span>
+                                    </a>
+                                </li>
+                                <li class="mb-1 last:mb-0">
+                                    <a class="block text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition truncate @if(Request::is('master/kpi-monthly-targets*')){{ 'text-violet-500!' }}@endif" href="{{ route('master.kpi-monthly-targets.index') }}">
+                                        <span class="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Monthly Targets</span>
+                                    </a>
+                                </li>
+                                @endcan
+                                @can('view capa')
+                                <li class="mb-1 last:mb-0">
+                                    <a class="block text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition truncate @if(Request::is('master/capa-areas*')){{ 'text-violet-500!' }}@endif" href="{{ route('master.capa-areas.index') }}">
+                                        <span class="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">CAPA Areas</span>
+                                    </a>
+                                </li>
+                                @endcan
+                            </ul>
+                        </div>
+                    </li>
+                    @endcanany
+
+                    <!-- KPI Reports -->
+                    @can('view kpi')
+                    <li class="pl-4 pr-3 py-2 rounded-lg mb-0.5 last:mb-0 @if(Request::segment(1) === 'kpi'){{ 'bg-linear-to-r from-violet-500/[0.12] dark:from-violet-500/[0.24] to-violet-500/[0.04]' }}@endif">
+                        <a class="block text-gray-800 dark:text-gray-100 truncate transition @if(Request::segment(1) !== 'kpi'){{ 'hover:text-gray-900 dark:hover:text-white' }}@endif" href="{{ route('kpi.entries.index') }}">
+                            <div class="flex items-center">
+                                <svg class="shrink-0 fill-current @if(Request::segment(1) === 'kpi'){{ 'text-violet-500' }}@else{{ 'text-gray-400 dark:text-gray-500' }}@endif" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                                    <path d="M2 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v1h10V4a1 1 0 0 0-1-1H4ZM3 7v5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V7H3Zm2 1h2v4H5V8Zm4 0h2v4H9V8Z"/>
+                                </svg>
+                                <span class="text-sm font-medium ml-4 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">KPI Reports</span>
+                            </div>
+                        </a>
+                    </li>
+                    @endcan
+
+                    <!-- CAPA Management -->
+                    @can('view capa')
+                    <li class="pl-4 pr-3 py-2 rounded-lg mb-0.5 last:mb-0 @if(Request::segment(1) === 'capa'){{ 'bg-linear-to-r from-violet-500/[0.12] dark:from-violet-500/[0.24] to-violet-500/[0.04]' }}@endif" x-data="{ open: {{ Request::segment(1) === 'capa' ? 1 : 0 }} }">
+                        <a class="block text-gray-800 dark:text-gray-100 truncate transition @if(Request::segment(1) !== 'capa'){{ 'hover:text-gray-900 dark:hover:text-white' }}@endif" href="#0" @click.prevent="open = !open; sidebarExpanded = true">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                    <svg class="shrink-0 fill-current @if(Request::segment(1) === 'capa'){{ 'text-violet-500' }}@else{{ 'text-gray-400 dark:text-gray-500' }}@endif" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                                        <path d="M8 0a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2H9v6a1 1 0 1 1-2 0V9H1a1 1 0 0 1 0-2h6V1a1 1 0 0 1 1-1Z"/>
+                                    </svg>
+                                    <span class="text-sm font-medium ml-4 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">CAPA</span>
+                                </div>
+                                <div class="flex shrink-0 ml-2">
+                                    <svg class="w-3 h-3 shrink-0 ml-1 fill-current text-gray-400 dark:text-gray-500 @if(Request::segment(1) === 'capa'){{ 'rotate-180' }}@endif" :class="open ? 'rotate-180' : 'rotate-0'" viewBox="0 0 12 12">
+                                        <path d="M5.9 11.4L.5 6l1.4-1.4 4 4 4-4L11.3 6z" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </a>
+                        <div class="lg:hidden lg:sidebar-expanded:block 2xl:block">
+                            <ul class="pl-8 mt-1 @if(!Request::segment(1) === 'capa'){{ 'hidden' }}@endif" :class="open ? '!block' : 'hidden'">
+                                @can('create capa')
+                                <li class="mb-1 last:mb-0">
+                                    <a class="block text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition truncate @if(Request::is('capa/create-comprehensive')){{ 'text-violet-500!' }}@endif" href="{{ route('capa.create-comprehensive') }}">
+                                        <span class="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">Create CAPA</span>
+                                    </a>
+                                </li>
+                                @endcan
+                                <li class="mb-1 last:mb-0">
+                                    <a class="block text-gray-500/90 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition truncate @if(Request::is('capa/problems*')){{ 'text-violet-500!' }}@endif" href="{{ route('capa.problems.index') }}">
+                                        <span class="text-sm font-medium lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">View CAPAs</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </li>
+                    @endcan
+
                     <!-- E-Commerce -->
                     <li class="pl-4 pr-3 py-2 rounded-lg mb-0.5 last:mb-0 bg-linear-to-r @if(in_array(Request::segment(1), ['ecommerce'])){{ 'from-violet-500/[0.12] dark:from-violet-500/[0.24] to-violet-500/[0.04]' }}@endif" x-data="{ open: {{ in_array(Request::segment(1), ['ecommerce']) ? 1 : 0 }} }">
                         <a class="block text-gray-800 dark:text-gray-100 truncate transition @if(!in_array(Request::segment(1), ['ecommerce'])){{ 'hover:text-gray-900 dark:hover:text-white' }}@endif" href="#0" @click.prevent="open = !open; sidebarExpanded = true">

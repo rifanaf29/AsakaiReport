@@ -4,6 +4,14 @@ namespace App\Providers;
 
 // use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
+use App\Models\Department;
+use App\Models\KpiEntry;
+use App\Models\CapaArea;
+use App\Models\CapaActionPlan;
+use App\Policies\DepartmentPolicy;
+use App\Policies\KpiEntryPolicy;
+use App\Policies\CapaAreaPolicy;
+use App\Policies\CapaActionPlanPolicy;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -13,7 +21,10 @@ class AuthServiceProvider extends ServiceProvider
      * @var array<class-string, class-string>
      */
     protected $policies = [
-        //
+        Department::class => DepartmentPolicy::class,
+        KpiEntry::class => KpiEntryPolicy::class,
+        CapaArea::class => CapaAreaPolicy::class,
+        CapaActionPlan::class => CapaActionPlanPolicy::class,
     ];
 
     /**
