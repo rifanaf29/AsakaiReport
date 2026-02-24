@@ -38,66 +38,22 @@
                             @enderror
                         </div>
 
-                        <!-- Problem Date & Reported By -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div>
-                                <label for="problem_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Problem Date <span class="text-red-500">*</span>
-                                </label>
-                                <input type="date" id="problem_date" name="problem_date" required
-                                       value="{{ old('problem_date', $problem->problem_date->format('Y-m-d')) }}"
-                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                @error('problem_date')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-
-                            <div>
-                                <label for="reported_by" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Reported By <span class="text-red-500">*</span>
-                                </label>
-                                <input type="text" id="reported_by" name="reported_by" required
-                                       value="{{ old('reported_by', $problem->reported_by) }}"
-                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                @error('reported_by')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-                        </div>
-
-                        <!-- Priority & Status -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div>
-                                <label for="priority" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Priority <span class="text-red-500">*</span>
-                                </label>
-                                <select id="priority" name="priority" required
-                                        class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                    <option value="Low" {{ old('priority', $problem->priority) == 'Low' ? 'selected' : '' }}>Low</option>
-                                    <option value="Medium" {{ old('priority', $problem->priority) == 'Medium' ? 'selected' : '' }}>Medium</option>
-                                    <option value="High" {{ old('priority', $problem->priority) == 'High' ? 'selected' : '' }}>High</option>
-                                    <option value="Critical" {{ old('priority', $problem->priority) == 'Critical' ? 'selected' : '' }}>Critical</option>
-                                </select>
-                                @error('priority')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-
-                            <div>
-                                <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Status <span class="text-red-500">*</span>
-                                </label>
-                                <select id="status" name="status" required
-                                        class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                    <option value="Open" {{ old('status', $problem->status) == 'Open' ? 'selected' : '' }}>Open</option>
-                                    <option value="In Progress" {{ old('status', $problem->status) == 'In Progress' ? 'selected' : '' }}>In Progress</option>
-                                    <option value="Resolved" {{ old('status', $problem->status) == 'Resolved' ? 'selected' : '' }}>Resolved</option>
-                                    <option value="Closed" {{ old('status', $problem->status) == 'Closed' ? 'selected' : '' }}>Closed</option>
-                                </select>
-                                @error('status')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
+                        <!-- Severity -->
+                        <div class="mb-6">
+                            <label for="severity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Severity <span class="text-red-500">*</span>
+                            </label>
+                            <select id="severity" name="severity" required
+                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="">Select Severity</option>
+                                <option value="low" {{ old('severity', $problem->severity) == 'low' ? 'selected' : '' }}>Low</option>
+                                <option value="medium" {{ old('severity', $problem->severity) == 'medium' ? 'selected' : '' }}>Medium</option>
+                                <option value="high" {{ old('severity', $problem->severity) == 'high' ? 'selected' : '' }}>High</option>
+                                <option value="critical" {{ old('severity', $problem->severity) == 'critical' ? 'selected' : '' }}>Critical</option>
+                            </select>
+                            @error('severity')
+                                <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
                         </div>
 
                         <!-- Problem Description -->

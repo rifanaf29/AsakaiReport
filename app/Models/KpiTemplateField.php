@@ -20,6 +20,7 @@ class KpiTemplateField extends Model
         'calculation_formula',
         'unit',
         'sort_order',
+        'default_value',
     ];
 
     protected $casts = [
@@ -42,5 +43,13 @@ class KpiTemplateField extends Model
     public function isCalculated(): bool
     {
         return $this->field_type === 'calculated';
+    }
+
+    /**
+     * Get the label for this field (using field_name as the label).
+     */
+    public function getLabelAttribute(): string
+    {
+        return $this->field_name;
     }
 }

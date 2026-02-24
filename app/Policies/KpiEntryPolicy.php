@@ -53,11 +53,6 @@ class KpiEntryPolicy
             return false;
         }
 
-        // Cannot edit locked entries unless admin
-        if ($kpiEntry->is_locked && !$user->hasRole('admin')) {
-            return false;
-        }
-
         // Admin or users with all department access can edit everything
         if ($user->hasRole('admin') || $user->can_access_all_departments) {
             return true;

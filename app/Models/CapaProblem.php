@@ -16,15 +16,16 @@ class CapaProblem extends Model
     protected $fillable = [
         'capa_area_id',
         'problem_description',
-        'problem_category',
         'severity',
         'sort_order',
-        'created_by',
+        'created_by',0
     ];
 
     protected $casts = [
         'sort_order' => 'integer',
     ];
+
+    protected $appends = ['problem_number'];
 
     /**
      * Get the CAPA area that owns this problem.
@@ -32,6 +33,14 @@ class CapaProblem extends Model
     public function area(): BelongsTo
     {
         return $this->belongsTo(CapaArea::class, 'capa_area_id');
+    }
+
+    /**
+     * Get the department through the CAPA area (accessor).
+     */
+    public function getDepartmentAttribute()
+    {
+        return $this->area ? $this->area->department : null;
     }
 
     /**
@@ -74,10 +83,53 @@ class CapaProblem extends Model
     }
 
     /**
-     * Scope by category.
+     * Generate problem number dynamically based on ID and year.
      */
-    public function scopeByCategory($query, string $category)
+    public function getProblemNumberAttribute(): string
     {
-        return $query->where('problem_category', $category);
+        $year = $this->created_at ? $this->created_at->format('Y') : date('Y');
+        return sprintf('CAPA-%s-%04d', $year, $this->id);
+    }
+
+    /**
+     * Get priority derived from severity.
+     */
+    public function getPriorityAttribute(): string
+    {
+        // Map severity to priority
+        return match($this->severity) {
+            'critical' => 'Critical',
+            'high' => 'High',
+            'medium' => 'Medium',
+            'low' => 'Low',
+            default => 'Medium',
+        };
+    }
+
+    /**
+     * Get status based on action plan completions.
+     */
+    public function getStatusAttribute(): string
+    {
+        // Check if all action plans are closed
+        $actionPlans = $this->actionPlans;
+        
+        if ($actionPlans->isEmpty()) {
+            return 'Open';
+        }
+
+        $allClosed = $actionPlans->every(function ($plan) {
+            return $plan->status === 'close';
+        });
+
+        if ($allClosed) {
+            return 'Closed';
+        }
+
+        $anyInProgress = $actionPlans->contains(function ($plan) {
+            return $plan->status === 'progress';
+        });
+
+        return $anyInProgress ? 'In Progress' : 'Open';
     }
 }

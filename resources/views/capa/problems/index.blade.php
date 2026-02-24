@@ -124,7 +124,7 @@
                                             {{ $problem->problem_number }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            {{ $problem->problem_date->format('Y-m-d') }}
+                                            {{ $problem->created_at->format('Y-m-d') }}
                                         </td>
                                         <td class="px-6 py-4 text-sm">
                                             <div class="max-w-xs truncate">{{ $problem->problem_description }}</div>

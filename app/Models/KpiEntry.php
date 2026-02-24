@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class KpiEntry extends Model
 {
@@ -72,6 +73,21 @@ class KpiEntry extends Model
     public function capaAreas(): HasMany
     {
         return $this->hasMany(CapaArea::class);
+    }
+
+    /**
+     * Get CAPA problems linked to this KPI entry (through CAPA areas).
+     */
+    public function capaProblems(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            CapaProblem::class,
+            CapaArea::class,
+            'kpi_entry_id',
+            'capa_area_id',
+            'id',
+            'id'
+        )->whereNull('capa_areas.deleted_at');
     }
 
     /**

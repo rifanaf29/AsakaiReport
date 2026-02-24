@@ -124,51 +124,23 @@
                         </button>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Problem Number <span class="text-red-500">*</span>
-                            </label>
-                            <input type="text" name="problems[${problemIndex}][problem_number]" required
-                                   placeholder="e.g., PROB-2026-001"
-                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                        </div>
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Severity <span class="text-red-500">*</span>
+                        </label>
+                        <select name="problems[${problemIndex}][severity]" required
+                                class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
 
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Problem Date <span class="text-red-500">*</span>
-                            </label>
-                            <input type="date" name="problems[${problemIndex}][problem_date]" required
-                                   value="${new Date().toISOString().split('T')[0]}"
-                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Priority <span class="text-red-500">*</span>
-                            </label>
-                            <select name="problems[${problemIndex}][priority]" required
-                                    class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                                <option value="Low">Low</option>
-                                <option value="Medium" selected>Medium</option>
-                                <option value="High">High</option>
-                                <option value="Critical">Critical</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Reported By <span class="text-red-500">*</span>
-                            </label>
-                            <input type="text" name="problems[${problemIndex}][reported_by]" required
-                                   value="{{ auth()->user()->name }}"
-                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                        </div>
-
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Problem Description <span class="text-red-500">*</span>
-                            </label>
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Problem Description <span class="text-red-500">*</span>
+                        </label>
                             <textarea name="problems[${problemIndex}][problem_description]" required rows="3"
                                       placeholder="Describe the problem..."
                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"></textarea>
@@ -225,15 +197,6 @@
                         </label>
                         <textarea name="problems[${problemIndex}][causes][${causeCount}][cause_description]" required rows="2"
                                   placeholder="What caused this problem?"
-                                  class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Root Cause Analysis
-                        </label>
-                        <textarea name="problems[${problemIndex}][causes][${causeCount}][root_cause_analysis]" rows="2"
-                                  placeholder="5 Why's, Fishbone, etc..."
                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"></textarea>
                     </div>
                 </div>
@@ -295,14 +258,11 @@
                         <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                             PIC (Person In Charge) <span class="text-red-500">*</span>
                         </label>
-                        <select name="problems[${problemIndex}][causes][${causeIndex}][action_plans][${actionCount}][pic_user_id]" 
-                                required
-                                class="w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                            <option value="">Select PIC...</option>
-                            @foreach($users as $user)
-                                <option value="{{ $user->id }}">{{ $user->name }}</option>
-                            @endforeach
-                        </select>
+                        <input type="text" 
+                               name="problems[${problemIndex}][causes][${causeIndex}][action_plans][${actionCount}][person_in_charge]" 
+                               placeholder="Enter name..."
+                               required
+                               class="w-full text-sm rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
                     </div>
 
                     <div>

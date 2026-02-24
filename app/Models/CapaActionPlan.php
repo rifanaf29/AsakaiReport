@@ -16,6 +16,7 @@ class CapaActionPlan extends Model
         'capa_cause_id',
         'description',
         'pic_user_id',
+        'person_in_charge',
         'due_date',
         'keterangan',
         'status',

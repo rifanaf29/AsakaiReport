@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('capa_area_id')->constrained()->onDelete('cascade');
             $table->text('problem_description')->comment('Description of the problem');
-            $table->string('problem_category', 50)->nullable()->comment('Category (Quality, Safety, Productivity, etc.)');
             $table->enum('severity', ['low', 'medium', 'high', 'critical'])->default('medium');
             $table->integer('sort_order')->default(0);
             $table->foreignId('created_by')->nullable()->constrained('users')->onDelete('set null');
@@ -23,7 +22,6 @@ return new class extends Migration
             $table->softDeletes();
 
             $table->index('capa_area_id');
-            $table->index('problem_category');
             $table->index('severity');
         });
     }

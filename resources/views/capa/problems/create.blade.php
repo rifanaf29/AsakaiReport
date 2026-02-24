@@ -31,46 +31,20 @@
                             @enderror
                         </div>
 
-                        <!-- Problem Date & Reported By -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div>
-                                <label for="problem_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Problem Date <span class="text-red-500">*</span>
-                                </label>
-                                <input type="date" id="problem_date" name="problem_date" required
-                                       value="{{ old('problem_date', date('Y-m-d')) }}"
-                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                @error('problem_date')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-
-                            <div>
-                                <label for="reported_by" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Reported By <span class="text-red-500">*</span>
-                                </label>
-                                <input type="text" id="reported_by" name="reported_by" required
-                                       value="{{ old('reported_by', auth()->user()->name) }}"
-                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                @error('reported_by')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-                        </div>
-
-                        <!-- Priority -->
+                        <!-- Severity -->
                         <div class="mb-6">
-                            <label for="priority" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Priority <span class="text-red-500">*</span>
+                            <label for="severity" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Severity <span class="text-red-500">*</span>
                             </label>
-                            <select id="priority" name="priority" required
-                                    class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                <option value="Low" {{ old('priority') == 'Low' ? 'selected' : '' }}>Low</option>
-                                <option value="Medium" {{ old('priority', 'Medium') == 'Medium' ? 'selected' : '' }}>Medium</option>
-                                <option value="High" {{ old('priority') == 'High' ? 'selected' : '' }}>High</option>
-                                <option value="Critical" {{ old('priority') == 'Critical' ? 'selected' : '' }}>Critical</option>
+                            <select id="severity" name="severity" required
+                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="">Select Severity</option>
+                                <option value="low" {{ old('severity') == 'low' ? 'selected' : '' }}>Low</option>
+                                <option value="medium" {{ old('severity') == 'medium' ? 'selected' : '' }}>Medium</option>
+                                <option value="high" {{ old('severity') == 'high' ? 'selected' : '' }}>High</option>
+                                <option value="critical" {{ old('severity') == 'critical' ? 'selected' : '' }}>Critical</option>
                             </select>
-                            @error('priority')
+                            @error('severity')
                                 <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                             @enderror
                         </div>

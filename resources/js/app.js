@@ -21,6 +21,7 @@ import dashboardCard06 from './components/dashboard-card-06';
 import dashboardCard08 from './components/dashboard-card-08';
 import dashboardCard09 from './components/dashboard-card-09';
 import dashboardCard11 from './components/dashboard-card-11';
+import kpiActualTargetChart from './components/kpi-actual-target-chart';
 
 // Define Chart.js default settings
 /* eslint-disable prefer-destructuring */
@@ -127,4 +128,5 @@ document.addEventListener('DOMContentLoaded', () => {
   dashboardCard08();
   dashboardCard09();
   dashboardCard11();
+  kpiActualTargetChart();
 });

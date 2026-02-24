@@ -1,66 +1,26 @@
-<x-app-layout>
-    <div class="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
-        <div class="sm:flex sm:justify-between sm:items-center mb-8">
-            <div class="mb-4 sm:mb-0">
-                <h1 class="text-2xl md:text-3xl text-gray-800 dark:text-gray-100 font-bold">Dashboard</h1>
-                <div class="text-sm text-gray-500 dark:text-gray-400">Actual vs Target ({{ $selectedMonthLabel ?? 'Selected Month' }})</div>
-                <div class="text-sm text-gray-500 dark:text-gray-400">Template: {{ $kpiChartMeta['template_title'] ?? ($selectedTemplate ? $selectedTemplate->name : 'All Templates') }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}</div>
-            </div>
+@php
+    $exitUrl = route('dashboard', request()->except('fullscreen'));
+@endphp
 
-            <form method="GET" action="{{ route('dashboard') }}" class="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
-                @if(auth()->user()->can_access_all_departments)
-                    <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Department</label>
-                        <select name="department" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-                            <option value="">All Departments</option>
-                            @foreach($departments as $dept)
-                                <option value="{{ $dept->id }}" {{ (string)$selectedDepartmentId === (string)$dept->id ? 'selected' : '' }}>
-                                    {{ $dept->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                @endif
-
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Month</label>
-                    <input type="month" name="month" value="{{ $selectedMonth ?? '' }}" class="form-input w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200" />
-                </div>
-
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Template</label>
-                    <select name="template" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-                        <option value="">All Templates</option>
-                        @foreach($templates as $tpl)
-                            <option value="{{ $tpl->id }}" {{ (string)$selectedTemplateId === (string)$tpl->id ? 'selected' : '' }}>
-                                {{ $tpl->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-
-                <div class="flex gap-2">
-                    <button type="submit" class="btn bg-gray-900 text-gray-100 hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-800 dark:hover:bg-white">Apply</button>
-                    <a href="{{ route('dashboard') }}" class="btn bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Reset</a>
-                    <a href="{{ route('dashboard', array_merge(request()->query(), ['fullscreen' => 1])) }}" class="btn bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Fullscreen</a>
-                </div>
-            </form>
-        </div>
-
+<x-fullscreen-layout>
+    <div class="p-4 sm:p-6 lg:p-8 w-full max-w mx-auto">
         <div class="grid grid-cols-12 gap-6">
             <!-- KPI Actual vs Target Chart -->
             <div class="col-span-full bg-white dark:bg-gray-800 shadow-xs rounded-xl">
                 <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60">
                     <div class="flex items-center justify-between">
-                        <h2 class="font-semibold text-gray-800 dark:text-gray-100">KPI Actual vs Target</h2>
-                        <div class="text-sm text-gray-500 dark:text-gray-400">
-                            {{ $selectedMonthLabel ?? '' }}{{ ($selectedMonthLabel ?? null) ? ' • ' : '' }}{{ $kpiChartMeta['template_title'] ?? ($selectedTemplate ? $selectedTemplate->name : 'All Templates') }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}
+                        <div>
+                            <h2 class="font-semibold text-gray-800 dark:text-gray-100">KPI Actual vs Target</h2>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">
+                                {{ $selectedMonthLabel ?? '' }}{{ ($selectedMonthLabel ?? null) ? ' • ' : '' }}{{ $kpiChartMeta['template_title'] ?? ($selectedTemplate ? $selectedTemplate->name : 'All Templates') }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}
+                            </div>
                         </div>
+                        <a href="{{ $exitUrl }}" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Exit</a>
                     </div>
                 </header>
                 <div class="p-5">
-                    <div class="h-[320px]">
-                        <canvas id="kpi-actual-target-chart" height="320"></canvas>
+                    <div class="h-[260px]">
+                        <canvas id="kpi-actual-target-chart" height="260"></canvas>
                     </div>
 
                     @php
@@ -176,6 +136,7 @@
                                     <td class="p-2" colspan="{{ $kpiTableLabels->count() }}">
                                         <div class="flex flex-wrap justify-end gap-x-4 gap-y-1">
                                             <div><span class="font-semibold">Target</span>: {{ $formatKpiCell($targetValue) ?: '-' }}</div>
+                                            <div><span class="font-semibold">Actual Sum</span>: {{ $actualCount ? $formatKpiCell($actualSum) : '-' }}</div>
                                             <div><span class="font-semibold">Actual Avg</span>: {{ $actualCount ? $formatKpiCell($actualAvg) : '-' }}</div>
                                             <div><span class="font-semibold">OK</span>: {{ $okCount }}</div>
                                             <div><span class="font-semibold">NG</span>: {{ $ngCount }}</div>
@@ -357,4 +318,4 @@
             </div>
         </div>
     </div>
-</x-app-layout>
+</x-fullscreen-layout>

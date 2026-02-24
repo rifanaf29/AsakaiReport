@@ -18,13 +18,17 @@ class CapaProblemController extends Controller
         Gate::authorize('view capa');
 
         $user = auth()->user();
-        $query = CapaProblem::with(['area', 'department']);
+        $query = CapaProblem::with(['area.department', 'causes', 'creator']);
 
         // Department filter based on user access
         if (!$user->can_access_all_departments) {
-            $query->where('department_id', $user->department_id);
+            $query->whereHas('area', function($q) use ($user) {
+                $q->where('department_id', $user->department_id);
+            });
         } elseif ($request->filled('department')) {
-            $query->where('department_id', $request->department);
+            $query->whereHas('area', function($q) use ($request) {
+                $q->where('department_id', $request->department);
+            });
         }
 
         // Area filter
@@ -45,14 +49,11 @@ class CapaProblemController extends Controller
         // Search
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('problem_description', 'like', "%{$search}%")
-                  ->orWhere('problem_number', 'like', "%{$search}%");
-            });
+            $query->where('problem_description', 'like', "%{$search}%");
         }
 
         $problems = $query->withCount(['causes', 'actionPlans'])
-                          ->latest('problem_date')
+                          ->latest()
                           ->paginate(15);
 
         $departments = $user->can_access_all_departments 
@@ -96,10 +97,8 @@ class CapaProblemController extends Controller
 
         $validated = $request->validate([
             'capa_area_id' => 'required|exists:capa_areas,id',
-            'problem_date' => 'required|date',
             'problem_description' => 'required|string|max:1000',
-            'priority' => 'required|in:Low,Medium,High,Critical',
-            'reported_by' => 'required|string|max:255',
+            'severity' => 'required|in:low,medium,high,critical',
         ]);
 
         // Get area and verify department access
@@ -110,18 +109,10 @@ class CapaProblemController extends Controller
             abort(403, 'You do not have access to this department.');
         }
 
-        // Generate problem number
-        $problemNumber = $this->generateProblemNumber($area->department_id);
-
         $problem = CapaProblem::create([
-            'problem_number' => $problemNumber,
             'capa_area_id' => $validated['capa_area_id'],
-            'department_id' => $area->department_id,
-            'problem_date' => $validated['problem_date'],
             'problem_description' => $validated['problem_description'],
-            'priority' => $validated['priority'],
-            'status' => 'Open',
-            'reported_by' => $validated['reported_by'],
+            'severity' => $validated['severity'],
             'created_by' => $user->id,
         ]);
 
@@ -137,11 +128,12 @@ class CapaProblemController extends Controller
         Gate::authorize('view capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($problem->department_id)) {
+        // Load area first to access department
+        $problem->load(['area.department', 'creator', 'causes', 'actionPlans']);
+        
+        if ($problem->area && !$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
-
-        $problem->load(['area', 'department', 'creator', 'causes', 'actionPlans']);
 
         return view('capa.problems.show', compact('problem'));
     }
@@ -154,7 +146,8 @@ class CapaProblemController extends Controller
         Gate::authorize('edit capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($problem->department_id)) {
+        $problem->load('area');
+        if (!$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
 
@@ -180,7 +173,8 @@ class CapaProblemController extends Controller
         Gate::authorize('edit capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($problem->department_id)) {
+        $problem->load('area');
+        if (!$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
 
@@ -191,11 +185,8 @@ class CapaProblemController extends Controller
 
         $validated = $request->validate([
             'capa_area_id' => 'required|exists:capa_areas,id',
-            'problem_date' => 'required|date',
             'problem_description' => 'required|string|max:1000',
-            'priority' => 'required|in:Low,Medium,High,Critical',
-            'reported_by' => 'required|string|max:255',
-            'status' => 'required|in:Open,In Progress,Resolved,Closed',
+            'severity' => 'required|in:low,medium,high,critical',
         ]);
 
         // Verify area department access
@@ -204,7 +195,10 @@ class CapaProblemController extends Controller
             abort(403, 'You do not have access to this department.');
         }
 
-        $problem->update($validated);
+        $problem->update([
+            'problem_description' => $validated['problem_description'],
+            'severity' => $validated['severity'],
+        ]);
 
         return redirect()->route('capa.problems.show', $problem)
             ->with('success', 'CAPA Problem updated successfully.');
@@ -218,7 +212,8 @@ class CapaProblemController extends Controller
         Gate::authorize('delete capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($problem->department_id)) {
+        $problem->load('area');
+        if (!$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
 
@@ -237,19 +232,5 @@ class CapaProblemController extends Controller
     /**
      * Generate a unique problem number.
      */
-    private function generateProblemNumber($departmentId)
-    {
-        $year = date('Y');
-        $dept = Department::find($departmentId);
-        $deptCode = strtoupper(substr($dept->code ?? 'GEN', 0, 3));
-        
-        $lastProblem = CapaProblem::where('department_id', $departmentId)
-            ->whereYear('created_at', $year)
-            ->orderBy('id', 'desc')
-            ->first();
-
-        $sequence = $lastProblem ? (intval(substr($lastProblem->problem_number, -4)) + 1) : 1;
-
-        return sprintf('CAPA-%s-%s-%04d', $deptCode, $year, $sequence);
-    }
+    // Removed generateProblemNumber method - problem_number field doesn't exist in current schema
 }

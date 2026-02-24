@@ -6,9 +6,9 @@
     </div>
 
     <div class="py-6">
-        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
+        <div class="max-w mx-auto sm:px-6 lg:px-8">
             <!-- Instructions -->
-            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 mb-6 shadow-sm">
                 <div class="flex">
                     <div class="flex-shrink-0">
                         <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -32,7 +32,7 @@
                 </div>
             </div>
 
-            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
+            <div class="bg-white dark:bg-gray-800 overflow-hidden rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
                 <div class="p-6 text-gray-900 dark:text-gray-100">
                     <form method="POST" action="{{ route('kpi.entries.store') }}" id="kpiEntryForm">
                         @csrf
@@ -43,7 +43,7 @@
                                 KPI Template <span class="text-red-500">*</span>
                             </label>
                             <select id="kpi_template_id" name="kpi_template_id" required
-                                    class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                                    class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                     onchange="loadTemplateFields(this.value)">
                                 <option value="">Select a template...</option>
                                 @foreach($templates as $template)
@@ -67,7 +67,7 @@
                             </label>
                             <input type="date" id="entry_date" name="entry_date" required readonly
                                    value="{{ date('Y-m-d') }}"
-                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 cursor-not-allowed">
+                                class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-600 cursor-not-allowed">
                             @error('entry_date')
                                 <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                             @enderror
@@ -83,7 +83,7 @@
                                 <div class="flex items-center">
                                     <input type="number" step="0.01" id="target" name="target" required
                                            value="{{ old('target') }}"
-                                           class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                         class="flex-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                                     <span id="target-unit-suffix" class="ml-2 text-sm font-medium text-gray-600 dark:text-gray-400">%</span>
                                 </div>
                                 @error('target')
@@ -99,7 +99,7 @@
                                 <div class="flex items-center">
                                     <input type="number" step="0.01" id="actual" name="actual" required
                                            value="{{ old('actual') }}"
-                                           class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
+                                         class="flex-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                                     <span id="actual-unit-suffix" class="ml-2 text-sm font-medium text-gray-600 dark:text-gray-400">%</span>
                                 </div>
                                 @error('actual')
@@ -118,18 +118,88 @@
                             </label>
                             <textarea id="notes" name="notes" rows="3"
                                       placeholder="Add any additional notes or comments about this KPI entry..."
-                                      class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes') }}</textarea>
+                                      class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">{{ old('notes') }}</textarea>
                             @error('notes')
                                 <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                             @enderror
                         </div>
 
+                        <!-- CAPA Section -->
+                        <div class="mb-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                            <div class="mb-4">
+                                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200">CAPA (Corrective and Preventive Action)</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Fill this section if issues are identified or when status is NG</p>
+                            </div>
+
+                            <!-- CAPA Area Information -->
+                            <div class="bg-white dark:bg-gray-800 rounded-xl p-5 mb-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+                                <h4 class="text-md font-semibold text-gray-800 dark:text-gray-200 mb-4">CAPA Area Information</h4>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="capa_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            CAPA Date
+                                        </label>
+                                        <input type="date" id="capa_date" name="capa_areas[0][capa_date]"
+                                               value="{{ date('Y-m-d') }}"
+                                                 class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                    </div>
+
+                                    <div>
+                                        <label for="capa_area_select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Area Name
+                                        </label>
+                                        <select id="capa_area_select" 
+                                                onchange="toggleCustomAreaInput()"
+                                            class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                            <option value="">-- Select Area --</option>
+                                            @foreach($capaAreas as $area)
+                                                <option value="{{ $area }}">{{ $area }}</option>
+                                            @endforeach
+                                            <option value="__custom__">✏️ Enter Custom Area Name</option>
+                                        </select>
+                                        
+                                        <input type="text" 
+                                               id="capa_area_name" 
+                                               name="capa_areas[0][area_name]"
+                                               placeholder="Enter custom area name"
+                                                 class="hidden mt-2 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Select from existing areas or enter a new one</p>
+                                    </div>
+
+                                    <div class="md:col-span-2">
+                                        <label for="capa_area_description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                            Area Description
+                                        </label>
+                                        <textarea id="capa_area_description" name="capa_areas[0][area_description]" rows="2"
+                                                  placeholder="Brief description of this area..."
+                                                  class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Problems Section -->
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="text-md font-semibold text-gray-700 dark:text-gray-200">Problems</h4>
+                                <button type="button" onclick="addProblem()" 
+                                    class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors shadow-sm">
+                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    Add Problem
+                                </button>
+                            </div>
+
+                            <!-- Problems Container -->
+                            <div id="problems-container"></div>
+                        </div>
+
                         <!-- Actions -->
                         <div class="flex items-center justify-end space-x-4">
-                            <a href="{{ route('kpi.entries.index') }}" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500">
+                            <a href="{{ route('kpi.entries.index') }}" class="inline-flex items-center px-5 py-2.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors">
                                 Cancel
                             </a>
-                            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                            <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold rounded-lg hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all shadow-lg">
                                 Create Entry
                             </button>
                         </div>
@@ -140,6 +210,32 @@
     </div>
 
     <script>
+        // Toggle custom area name input
+        function toggleCustomAreaInput() {
+            const select = document.getElementById('capa_area_select');
+            const input = document.getElementById('capa_area_name');
+            
+            if (select.value === '__custom__') {
+                input.classList.remove('hidden');
+                input.value = ''; // Clear the value to allow custom input
+                input.focus();
+            } else {
+                input.classList.add('hidden');
+                input.value = select.value; // Always set the value from dropdown
+            }
+        }
+
+        // Ensure area name is set before form submission
+        document.getElementById('kpiEntryForm').addEventListener('submit', function(e) {
+            const select = document.getElementById('capa_area_select');
+            const input = document.getElementById('capa_area_name');
+            
+            // If a dropdown value is selected (not custom), ensure it's in the hidden input
+            if (select.value && select.value !== '__custom__') {
+                input.value = select.value;
+            }
+        });
+
         function loadTemplateFields(templateId) {
             const container = document.getElementById('dynamic-fields-container');
             container.innerHTML = '';
@@ -203,7 +299,7 @@
 
                 input.name = `dynamic_fields[${field.field_key}]`;
                 input.required = field.is_required;
-                input.className = 'w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500';
+                input.className = 'w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
 
                 fieldDiv.appendChild(input);
                 grid.appendChild(fieldDiv);
@@ -277,5 +373,210 @@
                 loadMonthlyTarget();
             }
         });
+
+        // CAPA Dynamic Form Functions
+        let problemCounter = 0;
+
+        function addProblem() {
+            const container = document.getElementById('problems-container');
+            const problemIndex = problemCounter++;
+            
+            const problemDiv = document.createElement('div');
+            problemDiv.className = 'bg-white dark:bg-gray-800 rounded-xl p-5 mb-4 border border-gray-200 dark:border-gray-700 shadow-sm';
+            problemDiv.id = `problem-${problemIndex}`;
+            problemDiv.innerHTML = `
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-md font-semibold text-gray-800 dark:text-gray-200">Problem #${problemIndex + 1}</h4>
+                    <button type="button" onclick="removeProblem(${problemIndex})" 
+                            class="text-red-600 hover:text-red-800 dark:text-red-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Severity <span class="text-red-500">*</span>
+                    </label>
+                    <select name="capa_areas[0][problems][${problemIndex}][severity]" required
+                            class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Problem Description <span class="text-red-500">*</span>
+                    </label>
+                    <textarea name="capa_areas[0][problems][${problemIndex}][problem_description]" required rows="3"
+                              placeholder="Describe the problem or issue identified..."
+                              class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
+                </div>
+
+                <div class="border-t border-gray-300 dark:border-gray-600 pt-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Root Causes</h5>
+                        <button type="button" onclick="addCause(${problemIndex})" 
+                                class="text-sm px-3 py-1.5 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                            Add Cause
+                        </button>
+                    </div>
+                    <div id="causes-container-${problemIndex}"></div>
+                </div>
+            `;
+            
+            container.appendChild(problemDiv);
+            addCause(problemIndex);
+        }
+
+        function removeProblem(problemIndex) {
+            const problem = document.getElementById(`problem-${problemIndex}`);
+            if (problem) {
+                problem.remove();
+            }
+        }
+
+        function addCause(problemIndex) {
+            const container = document.getElementById(`causes-container-${problemIndex}`);
+            const causeCount = container.children.length;
+            
+            const causeDiv = document.createElement('div');
+            causeDiv.className = 'bg-gray-50 dark:bg-gray-900/20 rounded-xl p-4 mb-3 border border-gray-200 dark:border-gray-700';
+            causeDiv.id = `cause-${problemIndex}-${causeCount}`;
+            causeDiv.innerHTML = `
+                <div class="flex items-center justify-between mb-3">
+                    <h6 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Cause #${causeCount + 1}</h6>
+                    <button type="button" onclick="removeCause(${problemIndex}, ${causeCount})" 
+                            class="text-red-600 hover:text-red-800">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="space-y-3 mb-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Cause Description <span class="text-red-500">*</span>
+                        </label>
+                        <textarea name="capa_areas[0][problems][${problemIndex}][causes][${causeCount}][cause_description]" required rows="2"
+                                  placeholder="What caused this problem?"
+                                  class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-300 dark:border-gray-600 pt-3">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">Action Plans</span>
+                        <button type="button" onclick="addActionPlan(${problemIndex}, ${causeCount})" 
+                                class="text-xs px-3 py-1.5 bg-white dark:bg-gray-800 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
+                            Add Action
+                        </button>
+                    </div>
+                    <div id="actions-container-${problemIndex}-${causeCount}"></div>
+                </div>
+            `;
+            
+            container.appendChild(causeDiv);
+            addActionPlan(problemIndex, causeCount);
+        }
+
+        function removeCause(problemIndex, causeIndex) {
+            const cause = document.getElementById(`cause-${problemIndex}-${causeIndex}`);
+            if (cause) {
+                cause.remove();
+            }
+        }
+
+        function addActionPlan(problemIndex, causeIndex) {
+            const container = document.getElementById(`actions-container-${problemIndex}-${causeIndex}`);
+            const actionCount = container.children.length;
+            
+            const actionDiv = document.createElement('div');
+            actionDiv.className = 'bg-white dark:bg-gray-800 rounded-lg p-4 mb-2 border border-gray-200 dark:border-gray-700';
+            actionDiv.id = `action-${problemIndex}-${causeIndex}-${actionCount}`;
+            actionDiv.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">Action #${actionCount + 1}</span>
+                    <button type="button" onclick="removeAction(${problemIndex}, ${causeIndex}, ${actionCount})" 
+                            class="text-red-600 hover:text-red-800">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="space-y-2">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Action Description <span class="text-red-500">*</span>
+                        </label>
+                        <textarea name="capa_areas[0][problems][${problemIndex}][causes][${causeIndex}][action_plans][${actionCount}][description]" 
+                                  required rows="2"
+                                  placeholder="What action will be taken?"
+                                  class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                PIC (Person In Charge) <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" 
+                                   name="capa_areas[0][problems][${problemIndex}][causes][${causeIndex}][action_plans][${actionCount}][person_in_charge]"
+                                   placeholder="Enter name..."
+                                   required
+                                   class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Due Date <span class="text-red-500">*</span>
+                            </label>
+                            <input type="date" 
+                                   name="capa_areas[0][problems][${problemIndex}][causes][${causeIndex}][action_plans][${actionCount}][due_date]"
+                                   required
+                                   class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Status <span class="text-red-500">*</span>
+                            </label>
+                            <select name="capa_areas[0][problems][${problemIndex}][causes][${causeIndex}][action_plans][${actionCount}][status]"
+                                    required
+                                    class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                <option value="open">Open</option>
+                                <option value="progress">In Progress</option>
+                                <option value="close">Closed</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Notes / Remarks
+                        </label>
+                        <input type="text" 
+                               name="capa_areas[0][problems][${problemIndex}][causes][${causeIndex}][action_plans][${actionCount}][keterangan]"
+                               placeholder="Additional notes..."
+                               class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(actionDiv);
+        }
+
+        function removeAction(problemIndex, causeIndex, actionIndex) {
+            const action = document.getElementById(`action-${problemIndex}-${causeIndex}-${actionIndex}`);
+            if (action) {
+                action.remove();
+            }
+        }
     </script>
 </x-app-layout>

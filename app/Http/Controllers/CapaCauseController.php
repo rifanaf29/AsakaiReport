@@ -20,10 +20,10 @@ class CapaCauseController extends Controller
         $problem = null;
 
         if ($problemId) {
-            $problem = CapaProblem::findOrFail($problemId);
+            $problem = CapaProblem::with('area')->findOrFail($problemId);
             $user = auth()->user();
             
-            if (!$user->canAccessDepartment($problem->department_id)) {
+            if (!$user->canAccessDepartment($problem->area->department_id)) {
                 abort(403);
             }
 
@@ -38,7 +38,7 @@ class CapaCauseController extends Controller
             ->when(!$user->can_access_all_departments, function ($q) use ($user) {
                 return $q->where('department_id', $user->department_id);
             })
-            ->orderBy('problem_date', 'desc')
+            ->latest()
             ->get();
 
         return view('capa.causes.create', compact('problems', 'problem'));
@@ -60,10 +60,10 @@ class CapaCauseController extends Controller
         ]);
 
         // Verify problem access
-        $problem = CapaProblem::findOrFail($validated['capa_problem_id']);
+        $problem = CapaProblem::with('area')->findOrFail($validated['capa_problem_id']);
         $user = auth()->user();
 
-        if (!$user->canAccessDepartment($problem->department_id)) {
+        if (!$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
 
@@ -93,7 +93,8 @@ class CapaCauseController extends Controller
         Gate::authorize('view capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($cause->problem->department_id)) {
+        $cause->load('problem.area');
+        if (!$user->canAccessDepartment($cause->problem->area->department_id)) {
             abort(403);
         }
 
@@ -110,7 +111,8 @@ class CapaCauseController extends Controller
         Gate::authorize('edit capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($cause->problem->department_id)) {
+        $cause->load('problem.area');
+        if (!$user->canAccessDepartment($cause->problem->area->department_id)) {
             abort(403);
         }
 
@@ -130,7 +132,8 @@ class CapaCauseController extends Controller
         Gate::authorize('edit capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($cause->problem->department_id)) {
+        $cause->load('problem.area');
+        if (!$user->canAccessDepartment($cause->problem->area->department_id)) {
             abort(403);
         }
 
@@ -160,7 +163,8 @@ class CapaCauseController extends Controller
         Gate::authorize('delete capa');
 
         $user = auth()->user();
-        if (!$user->canAccessDepartment($cause->problem->department_id)) {
+        $cause->load('problem.area');
+        if (!$user->canAccessDepartment($cause->problem->area->department_id)) {
             abort(403);
         }
 

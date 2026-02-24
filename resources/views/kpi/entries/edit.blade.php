@@ -1,122 +1,334 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-            {{ __('Edit KPI Entry') }}
-        </h2>
-    </x-slot>
-
-    <div class="py-6">
-        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
-            <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900 dark:text-gray-100">
-                    <form method="POST" action="{{ route('kpi.entries.update', $entry) }}">
-                        @csrf
-                        @method('PUT')
-
-                        <!-- Template Info (Read-only) -->
-                        <div class="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-md">
-                            <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">KPI Template</div>
-                            <div class="text-lg font-semibold">{{ $entry->template->name }}</div>
-                            <div class="text-sm text-gray-600 dark:text-gray-400">{{ $entry->department->name }}</div>
-                        </div>
-
-                        <!-- Entry Date -->
-                        <div class="mb-6">
-                            <label for="entry_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Entry Date <span class="text-red-500">*</span>
-                            </label>
-                            <input type="date" id="entry_date" name="entry_date" required
-                                   value="{{ old('entry_date', $entry->entry_date->format('Y-m-d')) }}"
-                                   class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                            @error('entry_date')
-                                <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                            @enderror
-                        </div>
-
-                        <!-- Target & Actual -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div>
-                                <label for="target" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Target <span class="text-red-500">*</span>
-                                </label>
-                                <input type="number" step="0.01" id="target" name="target" required
-                                       value="{{ old('target', $entry->target) }}"
-                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                @error('target')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-
-                            <div>
-                                <label for="actual" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Actual <span class="text-red-500">*</span>
-                                </label>
-                                <input type="number" step="0.01" id="actual" name="actual" required
-                                       value="{{ old('actual', $entry->actual) }}"
-                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                @error('actual')
-                                    <p class="mt-1 text-sm text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-                        </div>
-
-                        <!-- Dynamic Fields -->
-                        @if($entry->template->fields->count() > 0)
-                        <div class="mb-6">
-                            <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-4">Additional Fields</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                @foreach($entry->template->fields as $field)
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                        {{ $field->label }} @if($field->is_required)<span class="text-red-500">*</span>@endif
-                                    </label>
-                                    @php
-                                        $fieldValue = old("dynamic_fields.{$field->field_name}", $entry->dynamic_fields[$field->field_name] ?? $field->default_value);
-                                    @endphp
-                                    @if($field->field_type === 'textarea')
-                                        <textarea name="dynamic_fields[{{ $field->field_name }}]" 
-                                                  rows="3"
-                                                  @if($field->is_required) required @endif
-                                                  class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">{{ $fieldValue }}</textarea>
-                                    @else
-                                        <input type="{{ $field->field_type }}" 
-                                               name="dynamic_fields[{{ $field->field_name }}]"
-                                               value="{{ $fieldValue }}"
-                                               @if($field->field_type === 'number') step="0.01" @endif
-                                               @if($field->is_required) required @endif
-                                               class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                    @endif
-                                </div>
-                                @endforeach
-                            </div>
-                        </div>
-                        @endif
-
-                        <!-- Notes/Comments -->
-                        <div class="mb-6">
-                            <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Notes/Comments
-                            </label>
-                            <textarea id="notes" name="notes" rows="3"
-                                      placeholder="Add any additional notes or comments about this KPI entry..."
-                                      class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes', $entry->notes) }}</textarea>
-                            @error('notes')
-                                <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                            @enderror
-                        </div>
-
-                        <!-- Actions -->
-                        <div class="flex items-center justify-end space-x-4">
-                            <a href="{{ route('kpi.entries.index') }}" class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500">
-                                Cancel
-                            </a>
-                            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
-                                Update Entry
-                            </button>
-                        </div>
-                    </form>
-                </div>
+        <div class="flex justify-between items-center">
+            <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
+                {{ __('Edit KPI Entry') }}
+            </h2>
+            <div class="flex items-center space-x-3">
+                <span class="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-full text-sm font-medium">
+                    {{ $entry->template->name }}
+                </span>
+                <span class="px-3 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-full text-sm">
+                    {{ $entry->department->name }}
+                </span>
             </div>
         </div>
+    </x-slot>
+
+    <style>
+        /* KPI Entries - Edit Form Styles */
+
+        /* Custom scrollbar for CAPA section */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* Dark mode scrollbar */
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+        
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4a5568;
+        }
+        
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #718096;
+        }
+
+        /* Card transitions */
+        .problem-card, .cause-card, .action-card {
+            transition: all 0.2s ease-in-out;
+        }
+        
+        .problem-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Highlight animation for newly added items */
+        @keyframes slideInAndHighlight {
+            0% {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            50% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .newly-added {
+            animation: slideInAndHighlight 0.5s ease-out;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28);
+        }
+        
+        .newly-added-fade {
+            transition: box-shadow 0.5s ease-out;
+            box-shadow: none;
+        }
+
+        /* Toast notification */
+        .toast-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 300px;
+            padding: 16px 24px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideInRight 0.3s ease-out;
+        }
+        
+        .dark .toast-notification {
+            background: #1f2937;
+            color: white;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+        
+        .toast-notification.hiding {
+            animation: slideOutRight 0.3s ease-in;
+        }
+
+        /* Collapse/Expand Animation */
+        .capa-area-content {
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out, opacity 0.3s ease-out;
+            opacity: 1;
+        }
+        
+        .capa-area-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+            transition: max-height 0.3s ease-in, opacity 0.2s ease-in;
+        }
+        
+        .collapse-icon {
+            transition: transform 0.3s ease;
+        }
+        
+        .collapse-icon.collapsed {
+            transform: rotate(-180deg);
+        }
+    </style>
+
+    <div class="py-6">
+        <div class="max-w mx-auto sm:px-6 lg:px-8">
+            <form method="POST" action="{{ route('kpi.entries.update', $entry) }}" class="space-y-6">
+                @csrf
+                @method('PUT')
+                
+                @php
+                    $capaAreas_data = $entry->capaAreas;
+                    $totalProblems = $capaAreas_data->sum(function($area) { return $area->problems->count(); });
+                    $totalCauses = $capaAreas_data->sum(function($area) { return $area->problems->sum(function($p) { return $p->causes->count(); }); });
+                    $totalActions = $capaAreas_data->sum(function($area) { return $area->problems->sum(function($p) { return $p->causes->sum(function($c) { return $c->actionPlans->count(); }); }); });
+                @endphp
+
+                <!-- Breadcrumb -->
+                <div class="flex items-center text-sm mb-6">
+                    <a href="{{ route('kpi.entries.index') }}" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                        </svg>
+                        KPI Entries
+                    </a>
+                    <svg class="w-4 h-4 mx-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <span class="text-gray-700 dark:text-gray-300 font-medium">Edit Entry</span>
+                </div>
+                
+                <!-- Equal 2-Column Layout -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Left Column: KPI Data -->
+                    <div class="space-y-6">
+                        <x-kpi.entry-form-card :entry="$entry" />
+                        <x-kpi.custom-fields-card :entry="$entry" />
+                        <x-kpi.notes-card :entry="$entry" />
+                    </div>
+
+                    <!-- Right Column: CAPA Section -->
+                    <div class="space-y-6">
+                        <x-kpi.capa-management-card 
+                            :capaAreas="$capaAreas_data"
+                            :totalProblems="$totalProblems"
+                            :totalCauses="$totalCauses"
+                            :totalActions="$totalActions" />
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-6 py-4">
+                    <a href="{{ route('kpi.entries.index') }}" 
+                       class="inline-flex items-center px-6 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                        </svg>
+                        Cancel
+                    </a>
+                    <div class="flex items-center space-x-3">
+                        <button type="submit" 
+                                class="inline-flex items-center px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold rounded-lg hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all shadow-lg">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Update KPI Entry
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
+
+    <script>
+        @include('components.kpi.capa-management-script')
+        
+        // Initialize CAPA management with areas list
+        document.addEventListener('DOMContentLoaded', function() {
+            initCapaManagement({!! json_encode($capaAreas->toArray()) !!});
+            
+            // Load existing CAPA data
+            @if($capaAreas_data->count() > 0)
+                @foreach($capaAreas_data as $areaIdx => $area)
+                    {
+                        const currentAreaIdx = capaAreaCounter;
+                        const areaName = {!! json_encode($area->area_name) !!};
+                        addCapaArea(areaName);
+                        
+                        // Set area date
+                        const dateInput = document.querySelector(`input[name="capa_areas[${currentAreaIdx}][capa_date]"]`);
+                        if (dateInput) dateInput.value = {!! json_encode($area->capa_date->format('Y-m-d')) !!};
+                        
+                        // Set area name
+                        const areaSelect = document.getElementById(`capa_area_select_${currentAreaIdx}`);
+                        const areaInput = document.getElementById(`capa_area_name_${currentAreaIdx}`);
+                        
+                        if (areaSelect && areaInput) {
+                            const optionExists = Array.from(areaSelect.options).some(opt => opt.value === areaName);
+                            if (optionExists) {
+                                areaSelect.value = areaName;
+                                areaInput.value = areaName;
+                            } else {
+                                areaSelect.value = '__custom__';
+                                areaInput.classList.remove('hidden');
+                                areaInput.value = areaName;
+                            }
+                        }
+                        
+                        // Set area description
+                        const descTextarea = document.querySelector(`textarea[name="capa_areas[${currentAreaIdx}][area_description]"]`);
+                        if (descTextarea) descTextarea.value = {!! json_encode($area->area_description ?? '') !!};
+                        
+                        // Load problems for this area
+                        @foreach($area->problems as $problemIdx => $problem)
+                            {
+                                const problemsContainer = document.getElementById(`problems-container-${currentAreaIdx}`);
+                                const currentProblemIdx = problemsContainer ? problemsContainer.children.length : 0;
+                                
+                                addProblem(currentAreaIdx);
+                                
+                                // Set problem data
+                                const severitySelect = document.querySelector(`#problem-${currentAreaIdx}-${currentProblemIdx} select[name*="severity"]`);
+                                if (severitySelect) severitySelect.value = {!! json_encode($problem->severity ?? 'medium') !!};
+                                
+                                const problemTextarea = document.querySelector(`#problem-${currentAreaIdx}-${currentProblemIdx} textarea[name*="problem_description"]`);
+                                if (problemTextarea) problemTextarea.value = {!! json_encode($problem->problem_description ?? '') !!};
+                                
+                                // Clear default cause
+                                const defaultCausesContainer = document.getElementById(`causes-container-${currentAreaIdx}-${currentProblemIdx}`);
+                                if (defaultCausesContainer) defaultCausesContainer.innerHTML = '';
+                                
+                                // Load causes
+                                @foreach($problem->causes as $causeIdx => $cause)
+                                    {
+                                        addCause(currentAreaIdx, currentProblemIdx);
+                                        
+                                        const causeDescTextarea = document.querySelector(`#cause-${currentAreaIdx}-${currentProblemIdx}-{{ $causeIdx }} textarea[name*="cause_description"]`);
+                                        if (causeDescTextarea) causeDescTextarea.value = {!! json_encode($cause->cause_description ?? '') !!};
+                                        
+                                        // Clear default action
+                                        const defaultActionsContainer = document.getElementById(`actions-container-${currentAreaIdx}-${currentProblemIdx}-{{ $causeIdx }}`);
+                                        if (defaultActionsContainer) defaultActionsContainer.innerHTML = '';
+                                        
+                                        // Load action plans
+                                        @foreach($cause->actionPlans as $actionIdx => $action)
+                                            {
+                                                addActionPlan(currentAreaIdx, currentProblemIdx, {{ $causeIdx }});
+                                                
+                                                setTimeout(() => {
+                                                    const actionContainer = document.getElementById(`action-${currentAreaIdx}-${currentProblemIdx}-{{ $causeIdx }}-{{ $actionIdx }}`);
+                                                    if (actionContainer) {
+                                                        const descInput = actionContainer.querySelector('textarea[name*="[description]"]');
+                                                        if (descInput) descInput.value = {!! json_encode($action->description ?? '') !!};
+                                                        
+                                                        const picInput = actionContainer.querySelector('input[name*="[person_in_charge]"]');
+                                                        if (picInput) picInput.value = {!! json_encode($action->person_in_charge ?? '') !!};
+                                                        
+                                                        const dueDateInput = actionContainer.querySelector('input[name*="[due_date]"]');
+                                                        if (dueDateInput) dueDateInput.value = {!! json_encode($action->due_date ? $action->due_date->format('Y-m-d') : '') !!};
+                                                        
+                                                        const statusSelect = actionContainer.querySelector('select[name*="[status]"]');
+                                                        if (statusSelect) statusSelect.value = {!! json_encode($action->status ?? 'open') !!};
+                                                        
+                                                        const keteranganInput = actionContainer.querySelector('input[name*="[keterangan]"]');
+                                                        if (keteranganInput) keteranganInput.value = {!! json_encode($action->keterangan ?? '') !!};
+                                                    }
+                                                }, 100);
+                                            }
+                                        @endforeach
+                                    }
+                                @endforeach
+                            }
+                        @endforeach
+                    }
+                @endforeach
+            @endif
+        });
+    </script>
 </x-app-layout>
