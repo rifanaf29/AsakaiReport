@@ -29,9 +29,10 @@ class DatabaseSeeder extends Seeder
             
             // 4. Create CAPA areas (depends on departments and users)
             CapaAreaSeeder::class,
+
             
             // 5. Other seeders
-            DashboardTableSeeder::class,
+            //DashboardTableSeeder::class,
         ]);
 
         $this->command->info('');

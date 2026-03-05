@@ -49,16 +49,6 @@
                     >
                 </div>
                 <div class="mb-4 sm:mb-0">
-                    <select name="department" class="form-select rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800">
-                        <option value="">All Departments</option>
-                        @foreach($departments as $dept)
-                        <option value="{{ $dept->id }}" {{ request('department') == $dept->id ? 'selected' : '' }}>
-                            {{ $dept->name }}
-                        </option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="mb-4 sm:mb-0">
                     <select name="status" class="form-select rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800">
                         <option value="">All Status</option>
                         <option value="active" {{ request('status') === 'active' ? 'selected' : '' }}>Active</option>
@@ -90,10 +80,7 @@
                                 <div class="font-semibold text-left">Code</div>
                             </th>
                             <th class="px-4 py-3 whitespace-nowrap">
-                                <div class="font-semibold text-left">Name</div>
-                            </th>
-                            <th class="px-4 py-3 whitespace-nowrap">
-                                <div class="font-semibold text-left">Department</div>
+                                <div class="font-semibold text-left">Description</div>
                             </th>
                             <th class="px-4 py-3 whitespace-nowrap">
                                 <div class="font-semibold text-center">Fields</div>
@@ -119,10 +106,7 @@
                                 <div class="font-medium text-gray-800 dark:text-gray-100 font-mono">{{ $template->code }}</div>
                             </td>
                             <td class="px-4 py-3">
-                                <div class="text-gray-800 dark:text-gray-100">{{ $template->name }}</div>
-                            </td>
-                            <td class="px-4 py-3 whitespace-nowrap">
-                                <div class="text-gray-600 dark:text-gray-400">{{ $template->department->name }}</div>
+                                <div class="text-gray-600 dark:text-gray-400">{{ $template->description ?: '-' }}</div>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-center">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">

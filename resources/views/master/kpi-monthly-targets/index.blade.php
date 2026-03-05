@@ -4,14 +4,14 @@
         <!-- Page header -->
         <div class="mb-8">
             <div class="flex justify-between items-center">
-                <h1 class="text-2xl md:text-3xl text-gray-800 dark:text-gray-100 font-bold">Monthly KPI Targets</h1>
+                <h1 class="text-2xl md:text-3xl text-gray-800 dark:text-gray-100 font-bold">Yearly KPI Targets</h1>
                 @can('create kpi templates')
                 <a href="{{ route('master.kpi-monthly-targets.create') }}" 
                    class="btn bg-gray-900 text-gray-100 hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-800 dark:hover:bg-white">
                     <svg class="w-4 h-4 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
-                    Set Monthly Targets
+                    Set Yearly Target
                 </a>
                 @endcan
             </div>
@@ -37,10 +37,9 @@
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Department</label>
-                    <select name="department" class="form-select w-full rounded-lg">
-                        <option value="">All Departments</option>
+                    <select name="department" class="form-select w-full rounded-lg" required>
                         @foreach($departments as $dept)
-                        <option value="{{ $dept->id }}" {{ request('department') == $dept->id ? 'selected' : '' }}>
+                        <option value="{{ $dept->id }}" {{ (string) ($departmentId ?? '') === (string) $dept->id ? 'selected' : '' }}>
                             {{ $dept->name }}
                         </option>
                         @endforeach
@@ -64,9 +63,9 @@
                 <table class="table-auto w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead class="text-xs uppercase text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/20 border-t border-gray-200 dark:border-gray-700">
                         <tr>
-                            <th class="px-4 py-3 whitespace-nowrap text-left font-semibold">Template</th>
+                            <th class="px-4 py-3 whitespace-nowrap text-left font-semibold">KPI</th>
                             <th class="px-4 py-3 whitespace-nowrap text-left font-semibold">Department</th>
-                            <th class="px-4 py-3 whitespace-nowrap text-center font-semibold">Month</th>
+                            <th class="px-4 py-3 whitespace-nowrap text-center font-semibold">Year</th>
                             <th class="px-4 py-3 whitespace-nowrap text-right font-semibold">Target</th>
                             <th class="px-4 py-3 whitespace-nowrap text-left font-semibold">Set By</th>
                             <th class="px-4 py-3 whitespace-nowrap text-right font-semibold">Actions</th>
@@ -76,27 +75,36 @@
                         @forelse($targets as $target)
                         <tr>
                             <td class="px-4 py-3 whitespace-nowrap">
-                                @if($target->template)
-                                    <div class="font-medium text-gray-800 dark:text-gray-100">{{ $target->template->name }}</div>
-                                    <div class="text-xs text-gray-500">{{ $target->template->code }}</div>
+                                @if($target->kpiDefinition)
+                                    @php
+                                        $kpiName = $target->kpiDefinition->display_name ?: ($target->kpiDefinition->template?->code ?: 'KPI');
+                                        $tplCode = $target->kpiDefinition->template?->code;
+                                    @endphp
+                                    <div class="font-medium text-gray-800 dark:text-gray-100">{{ $kpiName }}</div>
+                                    @if($tplCode)
+                                        <div class="text-xs text-gray-500">Template: {{ $tplCode }}</div>
+                                    @endif
                                 @else
-                                    <div class="font-medium text-red-600 dark:text-red-400">Template Deleted</div>
-                                    <div class="text-xs text-gray-500">ID: {{ $target->kpi_template_id }}</div>
+                                    <div class="font-medium text-red-600 dark:text-red-400">KPI Deleted</div>
+                                    <div class="text-xs text-gray-500">ID: {{ $target->kpi_definition_id }}</div>
                                 @endif
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap">
-                                @if($target->template && $target->template->department)
+                                @php
+                                    $deptName = $target->department?->name;
+                                @endphp
+                                @if($deptName)
                                     <span class="px-2 py-1 text-xs rounded-full bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-                                        {{ $target->template->department->name }}
+                                        {{ $deptName }}
                                     </span>
                                 @else
                                     <span class="px-2 py-1 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
-                                        N/A
+                                        -
                                     </span>
                                 @endif
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-center">
-                                {{ \Carbon\Carbon::create($target->target_year, $target->target_month, 1)->format('F Y') }}
+                                {{ $target->target_year }}
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-right font-semibold text-gray-900 dark:text-gray-100">
                                 {{ number_format($target->target_value, 2) }}
@@ -107,7 +115,6 @@
                             <td class="px-4 py-3 whitespace-nowrap text-right">
                                 <div class="flex items-center justify-end gap-2">
                                     @can('edit kpi templates')
-                                    @if($target->template)
                                     <a href="{{ route('master.kpi-monthly-targets.edit', $target) }}" 
                                        class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
                                        title="Edit">
@@ -115,7 +122,6 @@
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                         </svg>
                                     </a>
-                                    @endif
                                     @endcan
 
                                     @can('delete kpi templates')
@@ -136,7 +142,7 @@
                         @empty
                         <tr>
                             <td colspan="6" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                                No monthly targets set for {{ $year }}. Click "Set Monthly Targets" to create them.
+                                No yearly targets set for {{ $year }}. Click "Set Yearly Target" to create one.
                             </td>
                         </tr>
                         @endforelse

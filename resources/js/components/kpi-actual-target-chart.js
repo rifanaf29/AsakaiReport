@@ -36,12 +36,22 @@ const kpiActualTargetChart = () => {
   const ctx = document.getElementById('kpi-actual-target-chart');
   if (!ctx) return;
 
+  if (window.kpiActualTargetChartInstance) {
+    try {
+      window.kpiActualTargetChartInstance.destroy();
+    } catch (e) {
+      // no-op
+    }
+    window.kpiActualTargetChartInstance = null;
+  }
+
   const chartPayload = window.kpiActualTargetChartData || { labels: [], actual: [], target: [] };
-  const chartMeta = window.kpiActualTargetChartMeta || { template_title: 'All Templates', unit: null };
+  const getMeta = () => window.kpiActualTargetChartMeta || { template_title: 'All Templates', unit: null, month_label: null };
   const labels = chartPayload.labels || [];
   const actual = chartPayload.actual || [];
   const target = chartPayload.target || [];
-  const unit = chartMeta.unit;
+  const getUnit = () => getMeta().unit;
+  const getMonthLabel = () => getMeta().month_label;
 
   const darkMode = localStorage.getItem('dark-mode') === 'true';
 
@@ -75,6 +85,9 @@ const kpiActualTargetChart = () => {
     dark: '#4B5563',
   };
 
+  const actualColor = 'rgb(0, 112, 192)';
+  const targetColor = 'rgb(192, 0, 0)';
+
   const chart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -83,28 +96,28 @@ const kpiActualTargetChart = () => {
         {
           label: 'Actual',
           data: actual,
-          borderColor: getCssVariable('--color-violet-500'),
-          backgroundColor: adjustColorOpacity(getCssVariable('--color-violet-500'), 0.12),
+          borderColor: actualColor,
+          backgroundColor: adjustColorOpacity(actualColor, 0.12),
           fill: true,
           borderWidth: 2,
           pointRadius: 2,
           pointHoverRadius: 4,
-          pointBackgroundColor: getCssVariable('--color-violet-500'),
-          pointHoverBackgroundColor: getCssVariable('--color-violet-500'),
+          pointBackgroundColor: actualColor,
+          pointHoverBackgroundColor: actualColor,
           tension: 0.2,
           clip: 20,
         },
         {
           label: 'Target',
           data: target,
-          borderColor: getCssVariable('--color-sky-500'),
-          backgroundColor: adjustColorOpacity(getCssVariable('--color-sky-500'), 0.08),
+          borderColor: targetColor,
+          backgroundColor: adjustColorOpacity(targetColor, 0.08),
           fill: true,
           borderWidth: 2,
           pointRadius: 2,
           pointHoverRadius: 4,
-          pointBackgroundColor: getCssVariable('--color-sky-500'),
-          pointHoverBackgroundColor: getCssVariable('--color-sky-500'),
+          pointBackgroundColor: targetColor,
+          pointHoverBackgroundColor: targetColor,
           tension: 0.2,
           clip: 20,
         },
@@ -113,8 +126,8 @@ const kpiActualTargetChart = () => {
     options: {
       layout: {
         padding: {
-          top: 12,
-          bottom: 12,
+          top: 6,
+          bottom: 10,
           left: 8,
           right: 8,
         },
@@ -127,15 +140,15 @@ const kpiActualTargetChart = () => {
           },
           ticks: {
             maxTicksLimit: 6,
-            callback: (value) => formatKpiValue(value, unit),
+            callback: (value) => formatKpiValue(value, getUnit()),
             color: darkMode ? textColor.dark : textColor.light,
           },
           grid: {
             color: darkMode ? gridColor.dark : gridColor.light,
           },
           title: {
-            display: Boolean(unit),
-            text: unit ? `Unit: ${unit}` : '',
+            display: Boolean(getUnit()),
+            text: getUnit() ? `Unit: ${getUnit()}` : '',
             color: darkMode ? textColor.dark : textColor.light,
           },
         },
@@ -163,13 +176,14 @@ const kpiActualTargetChart = () => {
       plugins: {
         title: {
           display: true,
-          text: chartMeta.template_title || 'All Templates',
-          color: darkMode ? textColor.dark : textColor.light,
+          text: getMonthLabel() ? [getMeta().template_title || 'All Templates', getMonthLabel()] : (getMeta().template_title || 'All Templates'),
+          color: '#000000',
           font: {
             size: 14,
             weight: '600',
           },
           padding: {
+            top: 6,
             bottom: 10,
           },
         },
@@ -182,7 +196,7 @@ const kpiActualTargetChart = () => {
         tooltip: {
           callbacks: {
             title: (items) => (items && items[0] ? items[0].label : ''),
-            label: (context) => `${context.dataset.label}: ${formatKpiValue(context.parsed?.y, unit)}`,
+            label: (context) => `${context.dataset.label}: ${formatKpiValue(context.parsed?.y, getUnit())}`,
           },
           titleColor: darkMode ? tooltipTitleColor.dark : tooltipTitleColor.light,
           bodyColor: darkMode ? tooltipBodyColor.dark : tooltipBodyColor.light,
@@ -213,7 +227,7 @@ const kpiActualTargetChart = () => {
 
     chart.options.plugins.legend.labels.color = isDark ? textColor.dark : textColor.light;
 
-    chart.options.plugins.title.color = isDark ? textColor.dark : textColor.light;
+    chart.options.plugins.title.color = '#000000';
 
     chart.options.plugins.tooltip.bodyColor = isDark ? tooltipBodyColor.dark : tooltipBodyColor.light;
     chart.options.plugins.tooltip.titleColor = isDark ? tooltipTitleColor.dark : tooltipTitleColor.light;
@@ -222,6 +236,8 @@ const kpiActualTargetChart = () => {
 
     chart.update('none');
   });
+
+  window.kpiActualTargetChartInstance = chart;
 };
 
 export default kpiActualTargetChart;

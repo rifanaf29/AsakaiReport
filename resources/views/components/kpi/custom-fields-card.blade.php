@@ -27,13 +27,15 @@
                     $fieldValue = $oldValue ?? $storedValue ?? $field->default_value ?? '';
                 @endphp
                 @if($field->field_type === 'textarea')
-                    <textarea name="dynamic_fields[{{ $field->field_key }}]" 
+                          <textarea name="dynamic_fields[{{ $field->field_key }}]" 
+                              data-field-key="{{ $field->field_key }}"
                               rows="3"
                               @if($field->is_required) required @endif
                               class="w-full px-4 py-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200">{{ $fieldValue }}</textarea>
                 @else
                     <input type="{{ $field->field_type }}" 
                            name="dynamic_fields[{{ $field->field_key }}]"
+                              data-field-key="{{ $field->field_key }}"
                            value="{{ $fieldValue }}"
                            @if($field->field_type === 'number') step="0.01" @endif
                            @if($field->is_required) required @endif

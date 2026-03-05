@@ -5,8 +5,13 @@
                 {{ __('Edit KPI Entry') }}
             </h2>
             <div class="flex items-center space-x-3">
+                @php
+                    $entryTemplateDisplay = $entry->template->departments
+                        ->firstWhere('id', $entry->department_id)?->pivot?->display_name
+                        ?: $entry->template->code;
+                @endphp
                 <span class="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-full text-sm font-medium">
-                    {{ $entry->template->name }}
+                    {{ $entryTemplateDisplay }}
                 </span>
                 <span class="px-3 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-full text-sm">
                     {{ $entry->department->name }}
@@ -329,6 +334,63 @@
                     }
                 @endforeach
             @endif
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const actualConfig = {
+                mode: {!! json_encode($entry->template->actual_mode ?? 'manual') !!},
+                aggregation: {!! json_encode($entry->template->actual_aggregation ?? 'sum') !!},
+                fieldKeys: {!! json_encode($entry->template->actual_field_keys ?? []) !!},
+            };
+
+            const actualInput = document.getElementById('actual');
+            if (!actualInput) return;
+
+            function computeAggregatedActual() {
+                if (actualConfig.mode !== 'aggregated') return;
+
+                const values = actualConfig.fieldKeys
+                    .map((key) => {
+                        const input = document.querySelector(`[name="dynamic_fields[${key}]"]`);
+                        return input ? parseFloat(input.value) : NaN;
+                    })
+                    .filter((value) => Number.isFinite(value));
+
+                if (values.length === 0) {
+                    actualInput.value = '';
+                    return;
+                }
+
+                let result = 0;
+                switch (actualConfig.aggregation) {
+                    case 'avg':
+                        result = values.reduce((sum, value) => sum + value, 0) / values.length;
+                        break;
+                    case 'min':
+                        result = Math.min(...values);
+                        break;
+                    case 'max':
+                        result = Math.max(...values);
+                        break;
+                    default:
+                        result = values.reduce((sum, value) => sum + value, 0);
+                        break;
+                }
+
+                actualInput.value = Number.isFinite(result) ? result.toFixed(2) : '';
+            }
+
+            if (actualConfig.mode === 'aggregated') {
+                actualInput.readOnly = true;
+                actualInput.required = false;
+                actualInput.classList.add('bg-gray-100', 'dark:bg-gray-600', 'cursor-not-allowed');
+
+                document.querySelectorAll('[data-field-key]').forEach((input) => {
+                    input.addEventListener('input', computeAggregatedActual);
+                });
+
+                computeAggregatedActual();
+            }
         });
     </script>
 </x-app-layout>

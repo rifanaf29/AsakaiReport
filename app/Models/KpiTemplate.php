@@ -5,19 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class KpiTemplate extends Model
 {
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'department_id',
         'name',
         'code',
         'description',
         'target_unit',
+        'actual_mode',
+        'actual_aggregation',
+        'actual_field_keys',
         'is_active',
         'sort_order',
     ];
@@ -25,14 +27,17 @@ class KpiTemplate extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'sort_order' => 'integer',
+        'actual_field_keys' => 'array',
     ];
 
     /**
-     * Get the department that owns this template.
+     * Get departments that use this template (shared templates).
      */
-    public function department(): BelongsTo
+    public function departments(): BelongsToMany
     {
-        return $this->belongsTo(Department::class);
+        return $this->belongsToMany(Department::class, 'kpi_template_departments')
+            ->withPivot(['display_name', 'is_active', 'sort_order'])
+            ->withTimestamps();
     }
 
     /**
@@ -60,16 +65,24 @@ class KpiTemplate extends Model
     }
 
     /**
-     * Get target for a specific month.
+     * Get target for a specific year.
      */
-    public function getTargetForMonth(int $year, int $month): ?float
+    public function getTargetForYear(int $year): ?float
     {
         $target = $this->monthlyTargets()
             ->where('target_year', $year)
-            ->where('target_month', $month)
+            ->where('target_month', 1)
             ->first();
 
         return $target ? (float) $target->target_value : null;
+    }
+
+    /**
+     * Backwards-compatible: month is ignored (yearly targets).
+     */
+    public function getTargetForMonth(int $year, int $month): ?float
+    {
+        return $this->getTargetForYear($year);
     }
 
     /**

@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Master\DepartmentController;
 use App\Http\Controllers\Master\UserController;
 use App\Http\Controllers\Master\KpiTemplateController;
+use App\Http\Controllers\Master\KpiTemplateAssignmentController;
 use App\Http\Controllers\Master\KpiMonthlyTargetController;
 use App\Http\Controllers\Master\CapaAreaController;
 
@@ -33,6 +34,7 @@ Route::redirect('/', 'login');
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/payload', [DashboardController::class, 'payload'])->name('dashboard.payload');
 
     // Master Data Routes
     Route::prefix('master')->name('master.')->group(function () {
@@ -44,6 +46,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         
         // KPI Template Management
         Route::resource('kpi-templates', KpiTemplateController::class);
+        Route::get('kpi-template-assignments', [KpiTemplateAssignmentController::class, 'index'])->name('kpi-template-assignments.index');
+        Route::put('kpi-template-assignments', [KpiTemplateAssignmentController::class, 'update'])->name('kpi-template-assignments.update');
         
         // KPI Monthly Targets
         Route::get('kpi-monthly-targets/get-target', [KpiMonthlyTargetController::class, 'getTarget'])

@@ -4,23 +4,21 @@
             <div class="mb-4 sm:mb-0">
                 <h1 class="text-2xl md:text-3xl text-gray-800 dark:text-gray-100 font-bold">Dashboard</h1>
                 <div class="text-sm text-gray-500 dark:text-gray-400">Actual vs Target ({{ $selectedMonthLabel ?? 'Selected Month' }})</div>
-                <div class="text-sm text-gray-500 dark:text-gray-400">Template: {{ $kpiChartMeta['template_title'] ?? ($selectedTemplate ? $selectedTemplate->name : 'All Templates') }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}</div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">KPI: {{ $kpiChartMeta['template_title'] ?? 'All KPIs' }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}</div>
             </div>
 
             <form method="GET" action="{{ route('dashboard') }}" class="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
-                @if(auth()->user()->can_access_all_departments)
-                    <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Department</label>
-                        <select name="department" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-                            <option value="">All Departments</option>
-                            @foreach($departments as $dept)
-                                <option value="{{ $dept->id }}" {{ (string)$selectedDepartmentId === (string)$dept->id ? 'selected' : '' }}>
-                                    {{ $dept->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                @endif
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Department</label>
+                    <select name="department" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                        <option value="">All Departments</option>
+                        @foreach($departments as $dept)
+                            <option value="{{ $dept->id }}" {{ (string)$selectedDepartmentId === (string)$dept->id ? 'selected' : '' }}>
+                                {{ $dept->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
 
                 <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Month</label>
@@ -28,12 +26,16 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Template</label>
-                    <select name="template" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-                        <option value="">All Templates</option>
-                        @foreach($templates as $tpl)
-                            <option value="{{ $tpl->id }}" {{ (string)$selectedTemplateId === (string)$tpl->id ? 'selected' : '' }}>
-                                {{ $tpl->name }}
+                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">KPI</label>
+                    <select name="kpi_definition_id" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                        <option value="">All KPIs</option>
+                        @foreach($kpis as $kpi)
+                            @php
+                                $kpiName = $kpi->display_name ?: ($kpi->template?->code ?: 'KPI');
+                                $tplCode = $kpi->template?->code;
+                            @endphp
+                            <option value="{{ $kpi->id }}" {{ (string)($selectedKpiDefinitionId ?? '') === (string)$kpi->id ? 'selected' : '' }}>
+                                {{ $kpiName }}{{ $tplCode ? ' ('.$tplCode.')' : '' }}
                             </option>
                         @endforeach
                     </select>
@@ -54,7 +56,7 @@
                     <div class="flex items-center justify-between">
                         <h2 class="font-semibold text-gray-800 dark:text-gray-100">KPI Actual vs Target</h2>
                         <div class="text-sm text-gray-500 dark:text-gray-400">
-                            {{ $selectedMonthLabel ?? '' }}{{ ($selectedMonthLabel ?? null) ? ' • ' : '' }}{{ $kpiChartMeta['template_title'] ?? ($selectedTemplate ? $selectedTemplate->name : 'All Templates') }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}
+                            {{ $selectedMonthLabel ?? '' }}{{ ($selectedMonthLabel ?? null) ? ' • ' : '' }}{{ $kpiChartMeta['template_title'] ?? 'All KPIs' }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}
                         </div>
                     </div>
                 </header>
@@ -73,12 +75,18 @@
                         $targetSeries = $kpiTableSeries->get('target', collect());
                         $actualSeries = $kpiTableSeries->get('actual', collect());
 
-                        $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries) {
+                        $operator = $kpiChartMeta['target_operator'] ?? 'gte';
+
+                        $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries, $operator) {
                             $target = $targetSeries->get($index);
                             $actual = $actualSeries->get($index);
 
                             if ($target === null || $target === '' || $actual === null || $actual === '') return null;
                             if (!is_numeric($target) || !is_numeric($actual)) return null;
+
+                            if ($operator === 'lte') {
+                                return ((float) $actual <= (float) $target) ? 'OK' : 'NG';
+                            }
 
                             return ((float) $actual >= (float) $target) ? 'OK' : 'NG';
                         });
@@ -88,14 +96,11 @@
                         ]);
 
                         $kpiUnit = $kpiChartMeta['unit'] ?? null;
-                        $formatKpiCell = function ($value) use ($kpiUnit) {
+                        $formatKpiCell = function ($value) {
                             if ($value === null || $value === '') return '';
                             if (!is_numeric($value)) return '';
                             $number = (float) $value;
-                            $formatted = rtrim(rtrim(number_format($number, 2, '.', ','), '0'), '.');
-                            if (!$kpiUnit) return $formatted;
-                            if ($kpiUnit === '%') return $formatted . '%';
-                            return $formatted . ' ' . $kpiUnit;
+                            return rtrim(rtrim(number_format($number, 2, '.', ','), '0'), '.');
                         };
 
                         $actualNumeric = $actualSeries->filter(fn ($v) => is_numeric($v))->map(fn ($v) => (float) $v);
@@ -120,15 +125,17 @@
                                                 $labelDate = \Carbon\Carbon::createFromFormat('m-d-Y', $label);
                                                 $labelText = $labelDate->format('d');
                                                 $dowIso = $labelDate->dayOfWeekIso; // 1=Mon ... 6=Sat, 7=Sun
-                                                $dateHeaderCellClass = $dowIso === 6
-                                                    ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                                                    : ($dowIso === 7 ? 'bg-red-50 dark:bg-red-900/20' : '');
+                                                $dateHeaderCellStyle = $dowIso === 6
+                                                    ? 'background-color: rgb(255, 255, 0);'
+                                                    : ($dowIso === 7 ? 'background-color: rgb(192, 0, 0);' : '');
+                                                $dateHeaderTextClass = $dateHeaderCellStyle ? 'text-white' : '';
                                             } catch (\Exception $e) {
                                                 $labelText = $label;
-                                                $dateHeaderCellClass = '';
+                                                $dateHeaderCellStyle = '';
+                                                $dateHeaderTextClass = '';
                                             }
                                         @endphp
-                                        <th class="p-2 whitespace-nowrap {{ $dateHeaderCellClass }}"><div class="font-semibold text-center">{{ $labelText }}</div></th>
+                                        <th class="p-2 whitespace-nowrap" style="{{ $dateHeaderCellStyle }}"><div class="font-semibold text-center {{ $dateHeaderTextClass }}">{{ $labelText }}</div></th>
                                     @endforeach
                                 </tr>
                             </thead>
@@ -136,22 +143,33 @@
                                 @foreach($kpiTableSeries as $seriesName => $seriesValues)
                                     <tr>
                                         <td class="p-2">
-                                            <div class="text-gray-800 dark:text-gray-100">{{ \Illuminate\Support\Str::of($seriesName)->replace('_', ' ')->title() }}</div>
+                                            @php
+                                                $seriesLabel = $kpiSeriesLabels[$seriesName] ?? \Illuminate\Support\Str::of($seriesName)->replace('_', ' ')->title();
+                                                if (($seriesName === 'target' || $seriesName === 'actual') && !empty($kpiUnit)) {
+                                                    $seriesLabel .= ' (' . $kpiUnit . ')';
+                                                }
+                                            @endphp
+                                            <div class="text-gray-800 dark:text-gray-100">{{ $seriesLabel }}</div>
                                         </td>
                                         @foreach($seriesValues as $v)
                                             @php
                                                 $tdClass = '';
+                                                $tdStyle = '';
+                                                $valueTextClass = 'text-gray-800 dark:text-gray-100';
+                                                $isDynamicField = \Illuminate\Support\Str::startsWith($seriesName, 'field:');
                                                 if ($seriesName === 'target') {
-                                                    $tdClass = 'bg-red-50 dark:bg-red-900/20';
+                                                    $tdStyle = 'background-color: rgb(192, 0, 0);';
+                                                    $valueTextClass = 'text-white';
                                                 } elseif ($seriesName === 'actual') {
-                                                    $tdClass = 'bg-blue-50 dark:bg-blue-900/20';
+                                                    $tdStyle = 'background-color: rgb(0, 112, 192);';
+                                                    $valueTextClass = 'text-white';
                                                 } elseif ($seriesName === 'status') {
                                                     $tdClass = $v === 'OK'
                                                         ? 'bg-green-50 dark:bg-green-900/20'
                                                         : ($v === 'NG' ? 'bg-red-50 dark:bg-red-900/20' : '');
                                                 }
                                             @endphp
-                                            <td class="p-2 whitespace-nowrap {{ $tdClass }}">
+                                            <td class="p-2 whitespace-nowrap {{ $tdClass }}" style="{{ $tdStyle }}">
                                                 @if($seriesName === 'status')
                                                     @if($v === 'OK')
                                                         <div class="text-center text-xs text-green-700 dark:text-green-300">OK</div>
@@ -161,7 +179,9 @@
                                                         <div class="text-center text-xs text-gray-400 dark:text-gray-500"></div>
                                                     @endif
                                                 @else
-                                                    <div class="text-center text-gray-800 dark:text-gray-100">{{ $formatKpiCell($v) }}</div>
+                                                    <div class="text-center {{ $valueTextClass }}">
+                                                        {{ $isDynamicField ? ($v ?? '') : $formatKpiCell($v) }}
+                                                    </div>
                                                 @endif
                                             </td>
                                         @endforeach
@@ -174,9 +194,12 @@
                                         <div class="font-semibold text-left">Summary</div>
                                     </td>
                                     <td class="p-2" colspan="{{ $kpiTableLabels->count() }}">
+                                        @php
+                                            $unitSuffix = $kpiUnit ? ($kpiUnit === '%' ? '%' : (' ' . $kpiUnit)) : '';
+                                        @endphp
                                         <div class="flex flex-wrap justify-end gap-x-4 gap-y-1">
-                                            <div><span class="font-semibold">Target</span>: {{ $formatKpiCell($targetValue) ?: '-' }}</div>
-                                            <div><span class="font-semibold">Actual Avg</span>: {{ $actualCount ? $formatKpiCell($actualAvg) : '-' }}</div>
+                                            <div><span class="font-semibold">Target</span>: {{ $formatKpiCell($targetValue) ?: '-' }}{{ $unitSuffix }}</div>
+                                            <div><span class="font-semibold">Actual Avg</span>: {{ $actualCount ? $formatKpiCell($actualAvg) : '-' }}{{ $unitSuffix }}</div>
                                             <div><span class="font-semibold">OK</span>: {{ $okCount }}</div>
                                             <div><span class="font-semibold">NG</span>: {{ $ngCount }}</div>
                                         </div>
@@ -188,7 +211,9 @@
 
                     <script>
                         window.kpiActualTargetChartData = @json($kpiChartData);
-                        window.kpiActualTargetChartMeta = @json($kpiChartMeta);
+                        window.kpiActualTargetChartMeta = @json(array_merge($kpiChartMeta ?? [], [
+                            'month_label' => $selectedMonthLabel ?? null,
+                        ]));
                     </script>
                 </div>
             </div>
@@ -203,15 +228,15 @@
                         <table class="table-fixed w-full dark:text-gray-300">
                             <thead class="text-xs uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50 rounded-xs">
                                 <tr>
-                                    <th class="p-2 w-28"><div class="font-semibold text-left">Date</div></th>
-                                    <th class="p-2 w-32"><div class="font-semibold text-left">Area</div></th>
+                                    <th class="p-2 w-28 sticky left-0 z-20 bg-gray-50 dark:bg-gray-700/50"><div class="font-semibold text-left">Date</div></th>
+                                    <th class="p-2 w-32 sticky left-28 z-20 bg-gray-50 dark:bg-gray-700/50"><div class="font-semibold text-left">Area</div></th>
                                     <th class="p-2 w-80"><div class="font-semibold text-left">Problem</div></th>
                                     <th class="p-2 w-80"><div class="font-semibold text-left">Root Cause</div></th>
                                     <th class="p-2 w-80"><div class="font-semibold text-left">Action Plan</div></th>
                                     <th class="p-2 w-28"><div class="font-semibold text-left">Due Date</div></th>
                                     <th class="p-2 w-40"><div class="font-semibold text-left">Notes</div></th>
                                     <th class="p-2 w-28"><div class="font-semibold text-left">PIC</div></th>
-                                    <th class="p-2 w-24"><div class="font-semibold text-center">Severity</div></th>
+                                    <th class="p-2 w-16"><div class="font-semibold text-center">Sev</div></th>
                                     <th class="p-2 w-28"><div class="font-semibold text-center">Status</div></th>
                                 </tr>
                             </thead>
@@ -282,14 +307,14 @@
                                                     @endphp
                                                     <tr class="{{ $rowClass }} hover:bg-gray-100 dark:hover:bg-gray-700/30">
                                                         @if(!$printedDate)
-                                                            <td class="p-2 align-top bg-gray-50 dark:bg-gray-700/20" rowspan="{{ $dateRowspan }}">
+                                                            <td class="p-2 align-top bg-gray-50 dark:bg-gray-700/20 sticky left-0 z-10" rowspan="{{ $dateRowspan }}">
                                                                 <div class="font-semibold text-gray-800 dark:text-gray-100">{{ $dateKey }}</div>
                                                             </td>
                                                             @php($printedDate = true)
                                                         @endif
 
                                                         @if(!$printedArea)
-                                                            <td class="p-2 align-top bg-gray-50 dark:bg-gray-700/10" rowspan="{{ $areaRowspan }}">
+                                                            <td class="p-2 align-top bg-gray-50 dark:bg-gray-700/10 sticky left-28 z-10" rowspan="{{ $areaRowspan }}">
                                                                 <div class="font-semibold text-gray-800 dark:text-gray-100">{{ $areaName }}</div>
                                                             </td>
                                                             @php($printedArea = true)
@@ -326,9 +351,11 @@
                                                             <div class="text-gray-800 dark:text-gray-100">{{ $picName ?: '-' }}</div>
                                                         </td>
                                                         <td class="p-2">
+                                                            @php($severityKey = strtolower((string) ($problem->severity ?? '')))
+                                                            @php($severityLabel = $severityKey === 'high' ? 'H' : ($severityKey === 'medium' ? 'M' : ($severityKey === 'low' ? 'L' : ($severityKey ? strtoupper(substr($severityKey, 0, 1)) : '-'))))
                                                             <div class="text-center">
                                                                 <span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
-                                                                    {{ ucfirst($problem->severity) }}
+                                                                    {{ $severityLabel }}
                                                                 </span>
                                                             </div>
                                                         </td>

@@ -6,45 +6,113 @@ use Illuminate\Http\Request;
 use App\Models\Department;
 use App\Models\KpiEntry;
 use App\Models\KpiMonthlyTarget;
-use App\Models\KpiTemplate;
+use App\Models\KpiDefinition;
 use App\Models\CapaProblem;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
     public function index(Request $request)
     {
-        $user = auth()->user();
-        $isFullscreen = $request->boolean('fullscreen');
+        $data = $this->buildDashboardData($request);
+        $viewName = $request->boolean('fullscreen') ? 'pages/dashboard/dashboard-fullscreen' : 'pages/dashboard/dashboard';
+        return view($viewName, $data);
+    }
 
-        $selectedDepartmentId = $request->input('department');
-        $selectedTemplateId = $request->input('template');
+    public function payload(Request $request)
+    {
+        $data = $this->buildDashboardData($request);
 
-        // Enforce department access for non-all-departments users.
-        if (!$user->can_access_all_departments) {
-            $selectedDepartmentId = $user->department_id;
+        $kpis = $data['kpis'] ?? collect();
+        $kpiOptions = $kpis->map(function ($kpi) {
+            $name = $kpi->display_name ?: ($kpi->template?->code ?: 'KPI');
+            return [
+                'id' => (int) $kpi->id,
+                'name' => $name,
+                'template_code' => $kpi->template?->code,
+            ];
+        })->values();
+
+        $chartData = $data['kpiChartData'] ?? [];
+        $chartDataArray = [];
+        foreach ($chartData as $key => $value) {
+            if ($value instanceof \Illuminate\Support\Collection) {
+                $chartDataArray[$key] = $value->values()->all();
+            } else {
+                $chartDataArray[$key] = $value;
+            }
         }
 
-        $departments = $user->can_access_all_departments
-            ? Department::active()->orderBy('name')->get()
-            : collect([$user->department]);
+        return response()->json([
+            'selectedDepartmentId' => $data['selectedDepartmentId'] ?? null,
+            'selectedKpiDefinitionId' => $data['selectedKpiDefinitionId'] ?? null,
+            'selectedMonth' => $data['selectedMonth'] ?? null,
+            'selectedMonthLabel' => $data['selectedMonthLabel'] ?? null,
+            'kpis' => $kpiOptions,
+            'kpiChartData' => $chartDataArray,
+            'kpiChartMeta' => $data['kpiChartMeta'] ?? [],
+            'kpiSeriesLabels' => $data['kpiSeriesLabels'] ?? [],
+        ]);
+    }
 
-        $templates = KpiTemplate::active()
-            ->when($selectedDepartmentId, function ($q) use ($selectedDepartmentId) {
-                return $q->where('department_id', $selectedDepartmentId);
-            })
-            ->when(!$user->can_access_all_departments, function ($q) use ($user) {
-                return $q->where('department_id', $user->department_id);
-            })
-            ->orderBy('name')
-            ->get();
+    private function buildDashboardData(Request $request): array
+    {
+        $user = auth()->user();
 
-        $selectedTemplate = null;
-        if ($selectedTemplateId) {
-            $selectedTemplate = $templates->firstWhere('id', (int) $selectedTemplateId);
-            if (!$selectedTemplate) {
-                $selectedTemplateId = null;
+        $isPresentation = $request->boolean('fullscreen') || $request->expectsJson();
+
+        $selectedDepartmentId = $request->input('department');
+        $selectedKpiDefinitionId = $request->input('kpi_definition_id');
+        $selectedTemplateId = $request->input('template'); // legacy (kept; KPI selection is preferred)
+
+        // Dashboard is intentionally cross-department readable for all authenticated users.
+        $departments = Department::active()->orderBy('name')->get();
+
+        if ($isPresentation && $user->can_access_all_departments && !$selectedDepartmentId) {
+            $selectedDepartmentId = optional($departments->first())->id;
+        }
+
+        $kpis = collect();
+        if ($selectedDepartmentId) {
+            $kpis = KpiDefinition::query()
+                ->where('department_id', (int) $selectedDepartmentId)
+                ->where('is_active', 1)
+                ->with(['template', 'department'])
+                ->orderByRaw('COALESCE(sort_order, 999999) asc')
+                ->orderBy('id')
+                ->get()
+                ->filter(fn ($kpi) => (bool) $kpi->template);
+        }
+
+            if ($isPresentation && !$selectedKpiDefinitionId && $kpis->isNotEmpty()) {
+                $selectedKpiDefinitionId = (int) $kpis->first()->id;
             }
+
+        $selectedKpiDefinition = null;
+        if ($selectedKpiDefinitionId) {
+            $selectedKpiDefinition = $kpis->firstWhere('id', (int) $selectedKpiDefinitionId);
+
+            // If KPI doesn't exist in the current list (e.g. user loaded URL directly), fetch it.
+            if (!$selectedKpiDefinition) {
+                $selectedKpiDefinition = KpiDefinition::query()
+                    ->where('id', (int) $selectedKpiDefinitionId)
+                    ->with(['template', 'department'])
+                    ->first();
+            }
+
+            if ($selectedKpiDefinition) {
+                // Enforce access and keep filters consistent.
+                $kpiDeptId = (int) $selectedKpiDefinition->department_id;
+                $selectedDepartmentId = $kpiDeptId;
+            } else {
+                $selectedKpiDefinitionId = null;
+            }
+        }
+
+        $selectedTemplate = $selectedKpiDefinition?->template;
+        if ($selectedTemplate) {
+            $selectedTemplateId = (int) $selectedTemplate->id;
         }
 
         // Month filter (YYYY-MM). Default = current month.
@@ -63,8 +131,11 @@ class DashboardController extends Controller
             ->when($selectedDepartmentId, function ($q) use ($selectedDepartmentId) {
                 return $q->where('department_id', $selectedDepartmentId);
             })
-            ->when($selectedTemplateId, function ($q) use ($selectedTemplateId) {
-                return $q->where('kpi_template_id', $selectedTemplateId);
+            ->when($selectedKpiDefinitionId && Schema::hasColumn('kpi_entries', 'kpi_definition_id'), function ($q) use ($selectedKpiDefinitionId) {
+                return $q->where('kpi_definition_id', (int) $selectedKpiDefinitionId);
+            })
+            ->when(!$selectedKpiDefinitionId && $selectedTemplateId, function ($q) use ($selectedTemplateId) {
+                return $q->where('kpi_template_id', (int) $selectedTemplateId);
             });
 
         $kpiSeries = $kpiSeriesQuery
@@ -82,27 +153,16 @@ class DashboardController extends Controller
         $actuals = [];
 
         $monthlyTargetValue = null;
-        if ($selectedTemplateId) {
-            $rawTarget = KpiMonthlyTarget::query()
-                ->where('kpi_template_id', (int) $selectedTemplateId)
+        if ($selectedKpiDefinitionId && Schema::hasColumn('kpi_monthly_targets', 'kpi_definition_id')) {
+            $targetQuery = KpiMonthlyTarget::query()
+                ->where('kpi_definition_id', (int) $selectedKpiDefinitionId)
                 ->where('target_year', $monthStart->year)
-                ->where('target_month', $monthStart->month)
-                ->value('target_value');
+                ->where('target_month', 1);
 
+            $rawTarget = $targetQuery->value('target_value');
             $monthlyTargetValue = $rawTarget !== null ? (float) $rawTarget : null;
         } else {
-            $templateIds = $templates->pluck('id')->filter()->values();
-            if ($templateIds->isNotEmpty()) {
-                $targetsForMonth = KpiMonthlyTarget::query()
-                    ->whereIn('kpi_template_id', $templateIds)
-                    ->where('target_year', $monthStart->year)
-                    ->where('target_month', $monthStart->month)
-                    ->pluck('target_value');
-
-                $monthlyTargetValue = $targetsForMonth->isNotEmpty()
-                    ? (float) $targetsForMonth->sum(fn ($v) => (float) $v)
-                    : null;
-            }
+            $monthlyTargetValue = null;
         }
 
         $cursor = $monthStart->copy();
@@ -125,9 +185,69 @@ class DashboardController extends Controller
             'actual' => collect($actuals),
         ];
 
+        $kpiSeriesLabels = [];
+        if ($selectedTemplate) {
+            $templateFields = $selectedTemplate->fields()->orderBy('sort_order')->get();
+
+            if ($templateFields->isNotEmpty()) {
+                $entriesForFields = KpiEntry::query()
+                    ->whereBetween('entry_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+                    ->where('kpi_template_id', $selectedTemplate->id)
+                    ->when($selectedDepartmentId, function ($q) use ($selectedDepartmentId) {
+                        return $q->where('department_id', $selectedDepartmentId);
+                    })
+                    ->when($selectedKpiDefinitionId && Schema::hasColumn('kpi_entries', 'kpi_definition_id'), function ($q) use ($selectedKpiDefinitionId) {
+                        return $q->where('kpi_definition_id', (int) $selectedKpiDefinitionId);
+                    })
+                    ->select(['entry_date', 'dynamic_fields'])
+                    ->orderBy('entry_date')
+                    ->get();
+
+                $dynamicByDate = [];
+                foreach ($entriesForFields as $entry) {
+                    $dynamicByDate[Carbon::parse($entry->entry_date)->toDateString()] = $entry->dynamic_fields ?? [];
+                }
+
+                foreach ($templateFields as $field) {
+                    $seriesKey = 'field:' . $field->field_key;
+                    $kpiSeriesLabels[$seriesKey] = $field->field_name;
+                    $fieldValues = [];
+
+                    $cursor = $monthStart->copy();
+                    while ($cursor->lte($monthEnd)) {
+                        $dateKey = $cursor->toDateString();
+                        $fieldsForDate = $dynamicByDate[$dateKey] ?? [];
+                        $fieldValues[] = $fieldsForDate[$field->field_key] ?? null;
+                        $cursor->addDay();
+                    }
+
+                    $kpiChartData[$seriesKey] = collect($fieldValues);
+                }
+            }
+        }
+
+        $targetOperator = 'gte';
+        $targetUnit = null;
+        if ($selectedKpiDefinitionId && Schema::hasColumn('kpi_monthly_targets', 'kpi_definition_id')) {
+            $targetBaseQuery = KpiMonthlyTarget::query()
+                ->where('kpi_definition_id', (int) $selectedKpiDefinitionId)
+                ->where('target_year', $monthStart->year)
+                ->where('target_month', 1);
+
+            $targetOperator = (clone $targetBaseQuery)->value('target_operator') ?: 'gte';
+            $targetUnit = (clone $targetBaseQuery)->value('target_unit');
+        }
+
+        $kpiTitle = 'All KPIs';
+        if ($selectedKpiDefinition) {
+            $kpiTitle = trim((string) ($selectedKpiDefinition->display_name ?: ($selectedKpiDefinition->template?->code ?: 'KPI')));
+        }
+
         $kpiChartMeta = [
-            'template_title' => $selectedTemplate ? trim(($selectedTemplate->code ? ($selectedTemplate->code . ' - ') : '') . $selectedTemplate->name) : 'All Templates',
-            'unit' => $selectedTemplate?->target_unit,
+            'template_title' => $kpiTitle,
+            'unit' => $targetUnit,
+            'target_operator' => $targetOperator,
+            'month_label' => $selectedMonthLabel,
         ];
 
         // CAPA table: recent problems linked to KPI entries in the current filters.
@@ -142,33 +262,37 @@ class DashboardController extends Controller
                 'actionPlans.pic',
                 'actionPlans.cause',
             ])
-            ->whereHas('area.kpiEntry', function ($q) use ($selectedDepartmentId, $selectedTemplateId, $monthStart, $monthEnd) {
+            ->whereHas('area.kpiEntry', function ($q) use ($selectedDepartmentId, $selectedTemplateId, $selectedKpiDefinitionId, $monthStart, $monthEnd) {
                 $q->whereBetween('entry_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
                     ->when($selectedDepartmentId, function ($inner) use ($selectedDepartmentId) {
                         return $inner->where('department_id', $selectedDepartmentId);
                     })
-                    ->when($selectedTemplateId, function ($inner) use ($selectedTemplateId) {
-                        return $inner->where('kpi_template_id', $selectedTemplateId);
+                    ->when($selectedKpiDefinitionId && Schema::hasColumn('kpi_entries', 'kpi_definition_id'), function ($inner) use ($selectedKpiDefinitionId) {
+                        return $inner->where('kpi_definition_id', (int) $selectedKpiDefinitionId);
+                    })
+                    ->when(!$selectedKpiDefinitionId && $selectedTemplateId, function ($inner) use ($selectedTemplateId) {
+                        return $inner->where('kpi_template_id', (int) $selectedTemplateId);
                     });
             })
             ->latest()
             ->limit(15)
             ->get();
 
-        $viewName = $isFullscreen ? 'pages/dashboard/dashboard-fullscreen' : 'pages/dashboard/dashboard';
-
-        return view($viewName, [
+        return [
             'departments' => $departments,
-            'templates' => $templates,
+            'kpis' => $kpis,
             'selectedDepartmentId' => $selectedDepartmentId,
+            'selectedKpiDefinitionId' => $selectedKpiDefinitionId,
+            'selectedKpiDefinition' => $selectedKpiDefinition,
             'selectedTemplateId' => $selectedTemplateId,
             'selectedTemplate' => $selectedTemplate,
             'selectedMonth' => $selectedMonth,
             'selectedMonthLabel' => $selectedMonthLabel,
             'kpiChartData' => $kpiChartData,
             'kpiChartMeta' => $kpiChartMeta,
+            'kpiSeriesLabels' => $kpiSeriesLabels,
             'capaProblems' => $capaProblems,
-        ]);
+        ];
     }
 
     /**

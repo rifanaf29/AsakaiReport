@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Department extends Model
 {
@@ -31,19 +32,13 @@ class Department extends Model
     }
 
     /**
-     * Get all KPI templates for this department.
+     * Get shared KPI templates assigned to this department.
      */
-    public function kpiTemplates(): HasMany
+    public function sharedKpiTemplates(): BelongsToMany
     {
-        return $this->hasMany(KpiTemplate::class);
-    }
-
-    /**
-     * Get active KPI templates only.
-     */
-    public function activeKpiTemplates(): HasMany
-    {
-        return $this->kpiTemplates()->where('is_active', true)->orderBy('sort_order');
+        return $this->belongsToMany(KpiTemplate::class, 'kpi_template_departments')
+            ->withPivot(['display_name', 'is_active', 'sort_order'])
+            ->withTimestamps();
     }
 
     /**

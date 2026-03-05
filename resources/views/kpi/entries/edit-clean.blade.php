@@ -6,7 +6,12 @@
             </h2>
             <div class="flex items-center space-x-3">
                 <span class="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-sm font-medium">
-                    {{ $entry->template->name }}
+                    @php
+                        $entryTemplateDisplay = $entry->template->departments
+                            ->firstWhere('id', $entry->department_id)?->pivot?->display_name
+                            ?: $entry->template->code;
+                    @endphp
+                    {{ $entryTemplateDisplay }}
                 </span>
                 <span class="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm">
                     {{ $entry->department->name }}

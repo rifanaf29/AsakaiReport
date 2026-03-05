@@ -14,21 +14,21 @@ class DepartmentSeeder extends Seeder
     {
         $departments = [
             [
-                'code' => 'PROD',
+                'code' => 'PD',
                 'name' => 'Production',
                 'description' => 'Production Department - Manufacturing and assembly operations',
                 'is_active' => true,
             ],
             [
-                'code' => 'QA',
-                'name' => 'Quality Assurance',
-                'description' => 'Quality Assurance Department - Quality control and testing',
+                'code' => 'QC',
+                'name' => 'Quality',
+                'description' => 'Quality Department - Quality control and testing',
                 'is_active' => true,
             ],
             [
-                'code' => 'LOG',
-                'name' => 'Logistics',
-                'description' => 'Logistics Department - Warehouse and shipping operations',
+                'code' => 'PC',
+                'name' => 'PPIC',
+                'description' => 'PPIC Department - Production Planning and Inventory Control',
                 'is_active' => true,
             ],
             [
@@ -38,9 +38,9 @@ class DepartmentSeeder extends Seeder
                 'is_active' => true,
             ],
             [
-                'code' => 'FIN',
-                'name' => 'Finance',
-                'description' => 'Finance Department - Financial planning and accounting',
+                'code' => 'MK',
+                'name' => 'Marketing',
+                'description' => 'Marketing Department - Marketing and sales operations',
                 'is_active' => true,
             ],
             [
@@ -50,13 +50,13 @@ class DepartmentSeeder extends Seeder
                 'is_active' => true,
             ],
             [
-                'code' => 'ENG',
-                'name' => 'Engineering',
-                'description' => 'Engineering Department - Product design and development',
+                'code' => 'PS',
+                'name' => 'Purchasing',
+                'description' => 'Purchasing Department - Procurement and supplier management',
                 'is_active' => true,
             ],
             [
-                'code' => 'MAINT',
+                'code' => 'MN',
                 'name' => 'Maintenance',
                 'description' => 'Maintenance Department - Equipment and facility maintenance',
                 'is_active' => true,

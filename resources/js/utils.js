@@ -37,6 +37,21 @@ const adjustOKLCHOpacity = (oklchColor, opacity) => {
   return oklchColor.replace(/oklch\((.*?)\)/, (match, p1) => `oklch(${p1} / ${opacity})`);
 };
 
+const adjustRGBOpacity = (rgbColor, opacity) => {
+  const match = rgbColor.match(/^rgba?\(([^)]+)\)$/i);
+  if (!match) return rgbColor;
+
+  const parts = match[1]
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  const [r, g, b] = parts;
+  if (r === undefined || g === undefined || b === undefined) return rgbColor;
+
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
 export const adjustColorOpacity = (color, opacity) => {
   if (color.startsWith('#')) {
     return adjustHexOpacity(color, opacity);
@@ -44,6 +59,8 @@ export const adjustColorOpacity = (color, opacity) => {
     return adjustHSLOpacity(color, opacity);
   } else if (color.startsWith('oklch')) {
     return adjustOKLCHOpacity(color, opacity);
+  } else if (color.startsWith('rgb')) {
+    return adjustRGBOpacity(color, opacity);
   } else {
     throw new Error('Unsupported color format');
   }

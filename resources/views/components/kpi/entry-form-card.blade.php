@@ -59,7 +59,7 @@
                     Target Value <span class="text-red-500">*</span>
                 </label>
                 <div class="relative">
-                    <input type="number" step="0.01" name="target" required
+                          <input type="number" step="0.01" name="target" id="target" required
                            value="{{ old('target', $entry->target) }}"
                            class="w-full px-4 py-3 text-lg font-semibold border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200">
                     <span class="absolute right-3 top-3 text-sm text-gray-500 dark:text-gray-400">unit</span>
@@ -71,7 +71,7 @@
                     Actual Value <span class="text-red-500">*</span>
                 </label>
                 <div class="relative">
-                    <input type="number" step="0.01" name="actual" required
+                          <input type="number" step="0.01" name="actual" id="actual" required
                            value="{{ old('actual', $entry->actual) }}"
                            class="w-full px-4 py-3 text-lg font-semibold border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200">
                     <span class="absolute right-3 top-3 text-sm text-gray-500 dark:text-gray-400">unit</span>

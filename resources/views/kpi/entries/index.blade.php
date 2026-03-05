@@ -50,8 +50,11 @@
                             <select name="template" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
                                 <option value="">All Templates</option>
                                 @foreach($templates as $template)
+                                    @php
+                                        $displayName = $template->departments->first()?->pivot?->display_name ?: $template->code;
+                                    @endphp
                                     <option value="{{ $template->id }}" {{ request('template') == $template->id ? 'selected' : '' }}>
-                                        {{ $template->name }}
+                                        {{ $displayName }}
                                     </option>
                                 @endforeach
                             </select>
@@ -114,7 +117,12 @@
                                             {{ $entry->entry_date->format('Y-m-d') }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            {{ $entry->template->name }}
+                                            @php
+                                                $entryTemplateDisplay = $entry->template->departments
+                                                    ->firstWhere('id', $entry->department_id)?->pivot?->display_name
+                                                    ?: $entry->template->code;
+                                            @endphp
+                                            {{ $entryTemplateDisplay }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                                             {{ $entry->department->name }}

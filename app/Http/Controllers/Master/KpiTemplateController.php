@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Master;
 
 use App\Http\Controllers\Controller;
 use App\Models\KpiTemplate;
-use App\Models\Department;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +17,7 @@ class KpiTemplateController extends Controller
     {
         Gate::authorize('view kpi templates');
 
-        $query = KpiTemplate::with('department')->withCount('fields');
+        $query = KpiTemplate::with(['departments'])->withCount('fields');
 
         // Search functionality
         if ($request->filled('search')) {
@@ -30,20 +29,13 @@ class KpiTemplateController extends Controller
             });
         }
 
-        // Department filter
-        if ($request->filled('department')) {
-            $query->where('department_id', $request->department);
-        }
-
         // Status filter
         if ($request->filled('status')) {
             $query->where('is_active', $request->status === 'active');
         }
 
         $templates = $query->orderBy('code')->paginate(15);
-        $departments = Department::active()->orderBy('name')->get();
-
-        return view('master.kpi-templates.index', compact('templates', 'departments'));
+        return view('master.kpi-templates.index', compact('templates'));
     }
 
     /**
@@ -53,9 +45,7 @@ class KpiTemplateController extends Controller
     {
         Gate::authorize('create kpi templates');
 
-        $departments = Department::active()->orderBy('name')->get();
-
-        return view('master.kpi-templates.create', compact('departments'));
+        return view('master.kpi-templates.create');
     }
 
     /**
@@ -67,10 +57,11 @@ class KpiTemplateController extends Controller
 
         $validated = $request->validate([
             'code' => 'required|string|max:50|unique:kpi_templates,code',
-            'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'department_id' => 'required|exists:departments,id',
-            'target_unit' => 'required|string|max:20',
+            'actual_mode' => 'required|in:manual,aggregated',
+            'actual_aggregation' => 'required_if:actual_mode,aggregated|nullable|in:sum,avg,min,max',
+            'actual_field_keys' => 'required_if:actual_mode,aggregated|nullable|array',
+            'actual_field_keys.*' => 'string|max:50',
             'is_active' => 'boolean',
             'fields' => 'nullable|array',
             'fields.*.field_name' => 'required|string|max:100',
@@ -86,10 +77,11 @@ class KpiTemplateController extends Controller
         DB::transaction(function () use ($validated, $request) {
             $template = KpiTemplate::create([
                 'code' => $validated['code'],
-                'name' => $validated['name'],
+                'name' => $validated['code'],
                 'description' => $validated['description'] ?? null,
-                'department_id' => $validated['department_id'],
-                'target_unit' => $validated['target_unit'],
+                'actual_mode' => $validated['actual_mode'],
+                'actual_aggregation' => $validated['actual_aggregation'] ?? null,
+                'actual_field_keys' => $validated['actual_field_keys'] ?? null,
                 'is_active' => $request->has('is_active'),
             ]);
 
@@ -121,7 +113,7 @@ class KpiTemplateController extends Controller
     {
         Gate::authorize('view kpi templates');
 
-        $kpiTemplate->load(['department', 'fields' => function ($query) {
+        $kpiTemplate->load(['departments', 'fields' => function ($query) {
             $query->orderBy('sort_order');
         }]);
 
@@ -137,10 +129,9 @@ class KpiTemplateController extends Controller
 
         $kpiTemplate->load(['fields' => function ($query) {
             $query->orderBy('sort_order');
-        }]);
-        $departments = Department::active()->orderBy('name')->get();
+        }, 'departments']);
 
-        return view('master.kpi-templates.edit', compact('kpiTemplate', 'departments'));
+        return view('master.kpi-templates.edit', compact('kpiTemplate'));
     }
 
     /**
@@ -152,10 +143,11 @@ class KpiTemplateController extends Controller
 
         $validated = $request->validate([
             'code' => 'required|string|max:50|unique:kpi_templates,code,' . $kpiTemplate->id,
-            'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'department_id' => 'required|exists:departments,id',
-            'target_unit' => 'required|string|max:20',
+            'actual_mode' => 'required|in:manual,aggregated',
+            'actual_aggregation' => 'required_if:actual_mode,aggregated|nullable|in:sum,avg,min,max',
+            'actual_field_keys' => 'required_if:actual_mode,aggregated|nullable|array',
+            'actual_field_keys.*' => 'string|max:50',
             'is_active' => 'boolean',
             'fields' => 'nullable|array',
             'fields.*.field_name' => 'required|string|max:100',
@@ -171,10 +163,11 @@ class KpiTemplateController extends Controller
         DB::transaction(function () use ($validated, $request, $kpiTemplate) {
             $kpiTemplate->update([
                 'code' => $validated['code'],
-                'name' => $validated['name'],
+                'name' => $validated['code'],
                 'description' => $validated['description'] ?? null,
-                'department_id' => $validated['department_id'],
-                'target_unit' => $validated['target_unit'],
+                'actual_mode' => $validated['actual_mode'],
+                'actual_aggregation' => $validated['actual_aggregation'] ?? null,
+                'actual_field_keys' => $validated['actual_field_keys'] ?? null,
                 'is_active' => $request->has('is_active'),
             ]);
 

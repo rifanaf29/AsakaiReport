@@ -37,21 +37,6 @@
                                     <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Code</div>
                                     <div class="text-sm text-gray-800 dark:text-gray-100 font-mono mt-1">{{ $kpiTemplate->code }}</div>
                                 </div>
-
-                                <!-- Name -->
-                                <div class="mb-4">
-                                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Name</div>
-                                    <div class="text-sm text-gray-800 dark:text-gray-100 mt-1">{{ $kpiTemplate->name }}</div>
-                                </div>
-
-                                <!-- Department -->
-                                <div class="mb-4">
-                                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Department</div>
-                                    <div class="text-sm text-gray-800 dark:text-gray-100 mt-1">
-                                        {{ $kpiTemplate->department->name }} 
-                                        <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">({{ $kpiTemplate->department->code }})</span>
-                                    </div>
-                                </div>
                             </div>
 
                             <div>
@@ -81,6 +66,26 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Assigned Departments -->
+                        <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Assigned Departments</div>
+                            @if($kpiTemplate->departments->isEmpty())
+                                <div class="text-sm text-gray-500 dark:text-gray-400">-</div>
+                            @else
+                                <div class="space-y-1">
+                                    @foreach($kpiTemplate->departments as $dept)
+                                        <div class="text-sm text-gray-700 dark:text-gray-300">
+                                            <span class="font-medium">{{ $dept->name }}</span>
+                                            <span class="text-xs text-gray-500 dark:text-gray-400">({{ $dept->code }})</span>
+                                            @if(!empty($dept->pivot->display_name) && $dept->pivot->display_name !== $kpiTemplate->code)
+                                                <span class="text-xs text-gray-500 dark:text-gray-400">- {{ $dept->pivot->display_name }}</span>
+                                            @endif
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
                         </div>
 
                         <!-- Description -->

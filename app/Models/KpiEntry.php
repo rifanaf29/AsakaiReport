@@ -16,6 +16,7 @@ class KpiEntry extends Model
     protected $fillable = [
         'kpi_template_id',
         'department_id',
+        'kpi_definition_id',
         'entry_date',
         'target',
         'actual',
@@ -41,6 +42,14 @@ class KpiEntry extends Model
     public function template(): BelongsTo
     {
         return $this->belongsTo(KpiTemplate::class, 'kpi_template_id');
+    }
+
+    /**
+     * Get the KPI definition (department-specific KPI instance) for this entry.
+     */
+    public function kpiDefinition(): BelongsTo
+    {
+        return $this->belongsTo(KpiDefinition::class, 'kpi_definition_id');
     }
 
     /**

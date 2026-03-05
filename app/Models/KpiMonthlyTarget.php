@@ -12,9 +12,13 @@ class KpiMonthlyTarget extends Model
 
     protected $fillable = [
         'kpi_template_id',
+        'department_id',
+        'kpi_definition_id',
         'target_year',
         'target_month',
         'target_value',
+        'target_operator',
+        'target_unit',
         'notes',
         'created_by',
     ];
@@ -34,6 +38,22 @@ class KpiMonthlyTarget extends Model
     }
 
     /**
+     * KPI definition (department KPI instance) this target belongs to.
+     */
+    public function kpiDefinition(): BelongsTo
+    {
+        return $this->belongsTo(KpiDefinition::class, 'kpi_definition_id');
+    }
+
+    /**
+     * Get the department this target belongs to.
+     */
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
+    }
+
+    /**
      * Get the user who created this target.
      */
     public function creator(): BelongsTo
@@ -42,25 +62,33 @@ class KpiMonthlyTarget extends Model
     }
 
     /**
-     * Get target for a specific template and date.
+     * Get target for a specific template and year.
      */
-    public static function getTargetForDate(int $templateId, string $date): ?float
+    public static function getTargetForYear(int $templateId, int $departmentId, int $year): ?float
     {
-        $date = \Carbon\Carbon::parse($date);
-        
         $target = self::where('kpi_template_id', $templateId)
-            ->where('target_year', $date->year)
-            ->where('target_month', $date->month)
+            ->where('department_id', $departmentId)
+            ->where('target_year', $year)
+            ->where('target_month', 1)
             ->first();
 
         return $target ? (float) $target->target_value : null;
     }
 
     /**
-     * Get formatted month name.
+     * Backwards-compatible helper: date is accepted, but only the year is used.
      */
-    public function getMonthNameAttribute(): string
+    public static function getTargetForDate(int $templateId, int $departmentId, string $date): ?float
     {
-        return \Carbon\Carbon::create($this->target_year, $this->target_month, 1)->format('F Y');
+        $date = \Carbon\Carbon::parse($date);
+        return self::getTargetForYear($templateId, $departmentId, (int) $date->year);
+    }
+
+    /**
+     * Get formatted year label.
+     */
+    public function getYearNameAttribute(): string
+    {
+        return (string) $this->target_year;
     }
 }
