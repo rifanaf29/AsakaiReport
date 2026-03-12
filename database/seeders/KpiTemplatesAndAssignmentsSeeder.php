@@ -632,7 +632,7 @@ class KpiTemplatesAndAssignmentsSeeder extends Seeder
         $definitions = array_merge($definitions, [
             ['dept' => 'MN', 'template' => 'TPL_NORMAL', 'name' => 'Downtime Machine MN', 'unit' => '%', 'target' => 0.88, 'op' => 'lte'],
             ['dept' => 'MN', 'template' => 'TPL_NORMAL', 'name' => 'MTTR MN', 'unit' => 'Hour', 'target' => 2, 'op' => 'lte'],
-            ['dept' => 'MN', 'template' => 'TPL_NORMAL', 'name' => 'MTBF MN', 'unit' => 'Hour', 'target' => 400, 'op' => 'lte'],
+            ['dept' => 'MN', 'template' => 'TPL_NORMAL', 'name' => 'MTBF MN', 'unit' => 'Hour', 'target' => 400, 'op' => 'gte'],
         ]);
 
         // HR

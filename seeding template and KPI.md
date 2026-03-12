@@ -101,12 +101,12 @@ PD Special Template:
 	6. OT Charge PD3 (Unit Rp)
 	7. OT Charge PD4 (Unit Rp)
 	8. OT Charge PD5 (Unit Rp)
-	9. Total OT Charge (Unit: RP)
+	9. Total OT Charge (Unit: RP) -> SUm of OT Charge PD1 to PD5
 	10. Sales Amount (Unit: Rp)
 	11. Target Sales (unit: Rp) 
 	12. Achivement (Unit: %)
 
-	
+
 HR Special Template:
 1. Column Waste -> GRAM, NG, Puntungan)
 2. Field Total -> Sum of GRAM, NG, Puntungan per date)
