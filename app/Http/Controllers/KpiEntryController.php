@@ -15,9 +15,12 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class KpiEntryController extends Controller
 {
+    private const TEMPLATE_CNC_WASTE = 'TPL_PD_WASTE_CNC_BENDING';
+    private const TEMPLATE_PD_MP_OT = 'TPL_PD_MP_OT';
     /**
      * Display a listing of KPI entries.
      */
@@ -152,7 +155,408 @@ class KpiEntryController extends Controller
             ->orderBy('area_name')
             ->pluck('area_name');
 
-        return view('kpi.entries.create', compact('kpis', 'selectedKpi', 'capaAreas', 'selectedDepartmentId'));
+        $selectedDepartmentCode = null;
+        if ($selectedDepartmentId) {
+            $selectedDepartmentCode = Department::query()->whereKey((int) $selectedDepartmentId)->value('code');
+        }
+
+        return view('kpi.entries.create', compact('kpis', 'selectedKpi', 'capaAreas', 'selectedDepartmentId', 'selectedDepartmentCode'));
+    }
+
+    /**
+     * Prefill Maintenance (MN) KPI actuals by calling the Maintenance KPI API.
+     *
+     * API response should include:
+    * - total_downtime_hour (float) OR downtime (float)
+    * - total_tickets (int) OR finish (int)
+     *
+     * Input:
+     * - date (YYYY-MM-DD)
+     * - working_hours (float)
+     * - department_id (required for users with cross-dept access)
+     * - kpi_definition_ids[]
+     */
+    public function mnPrefill(Request $request)
+    {
+        Gate::authorize('create kpi');
+
+        $user = auth()->user();
+
+        $dateStr = (string) $request->query('date', '');
+        if (trim($dateStr) === '') {
+            return response()->json(['data' => []]);
+        }
+
+        try {
+            $date = Carbon::parse($dateStr);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Invalid date'], 422);
+        }
+
+        $departmentId = null;
+        if ($user->can_access_all_departments) {
+            $departmentId = $request->filled('department_id') ? (int) $request->query('department_id') : null;
+        } else {
+            $departmentId = (int) $user->department_id;
+        }
+
+        if (!$departmentId) {
+            return response()->json(['data' => []]);
+        }
+
+        if (!$user->canAccessDepartment($departmentId)) {
+            abort(403, 'You do not have access to this department.');
+        }
+
+        $deptCode = Department::query()->whereKey($departmentId)->value('code');
+        if ($deptCode !== 'MN') {
+            return response()->json(['data' => []]);
+        }
+
+        $workingHoursRaw = $request->query('working_hours');
+        if (!is_numeric($workingHoursRaw) || (float) $workingHoursRaw <= 0) {
+            return response()->json(['message' => 'working_hours is required'], 422);
+        }
+        $workingHours = (float) $workingHoursRaw;
+
+        $defIdsRaw = $request->query('kpi_definition_ids', []);
+        if (!is_array($defIdsRaw)) {
+            $defIdsRaw = [];
+        }
+        $kpiDefinitionIds = array_values(array_unique(array_filter(array_map('intval', $defIdsRaw), fn ($id) => $id > 0)));
+        if (!$kpiDefinitionIds) {
+            return response()->json(['data' => []]);
+        }
+
+        $definitions = KpiDefinition::query()
+            ->whereIn('id', $kpiDefinitionIds)
+            ->where('department_id', $departmentId)
+            ->where('is_active', 1)
+            ->get(['id', 'display_name']);
+
+        if ($definitions->isEmpty()) {
+            return response()->json(['data' => []]);
+        }
+
+        $apiUrl = rtrim((string) env('MN_KPI_API_URL', 'http://localhost:3000/api/mn-kpi'));
+        if ($apiUrl === '') {
+            return response()->json(['data' => []]);
+        }
+
+        // Respect MN_KPI_API_URL exactly as configured.
+        // If it already includes a query string (e.g., ?period=yesterday), do not append date.
+        $hasQueryInEnvUrl = false;
+        try {
+            $parts = parse_url($apiUrl);
+            $hasQueryInEnvUrl = is_array($parts) && !empty($parts['query']);
+        } catch (\Throwable $e) {
+            $hasQueryInEnvUrl = false;
+        }
+
+        $client = Http::acceptJson()->timeout(8);
+
+        try {
+            // Prefer date-aware request when supported (only if env URL does not fix a period/query).
+            $res = $hasQueryInEnvUrl
+                ? $client->get($apiUrl)
+                : $client->get($apiUrl, ['date' => $date->toDateString()]);
+        } catch (\Throwable $e) {
+            $res = null;
+        }
+
+        if (!$res || !$res->ok()) {
+            // Fallback: API that always returns "current day" and does not accept query params.
+            try {
+                $res = $client->get($apiUrl);
+            } catch (\Throwable $e) {
+                return response()->json(['message' => 'Failed to call MN KPI API'], 502);
+            }
+        }
+
+        if (!$res->ok()) {
+            return response()->json(['message' => 'MN KPI API returned error'], 502);
+        }
+
+        $json = $res->json();
+        $payload = is_array($json) ? ($json['data'] ?? $json) : [];
+        if (!is_array($payload)) {
+            $payload = [];
+        }
+
+        $downtimeHour = null;
+        $downtimeKey = null;
+        foreach (['total_downtime_hour', 'total_downtime_hours', 'total_downtime', 'downtime_hour', 'downtime_hours', 'downtime'] as $k) {
+            if (array_key_exists($k, $payload) && is_numeric($payload[$k])) {
+                $downtimeHour = (float) $payload[$k];
+                $downtimeKey = $k;
+                break;
+            }
+        }
+
+        $totalTickets = null;
+        $ticketsKey = null;
+        foreach (['total_tickets', 'tickets', 'ticket_total', 'finish'] as $k) {
+            if (array_key_exists($k, $payload) && is_numeric($payload[$k])) {
+                $totalTickets = (int) $payload[$k];
+                $ticketsKey = $k;
+                break;
+            }
+        }
+
+        $computed = [
+            'downtime_pct' => null,
+            'mttr' => null,
+            'mtbf' => null,
+        ];
+
+        if ($downtimeHour !== null) {
+            $computed['downtime_pct'] = $workingHours > 0 ? ($downtimeHour / $workingHours) * 100.0 : null;
+        }
+        if ($downtimeHour !== null && $totalTickets !== null && $totalTickets > 0) {
+            $computed['mttr'] = $downtimeHour / $totalTickets;
+            $computed['mtbf'] = $workingHours / $totalTickets;
+        }
+
+        $data = [];
+        foreach ($definitions as $def) {
+            $name = strtolower((string) $def->display_name);
+
+            if (str_contains($name, 'downtime') && $computed['downtime_pct'] !== null) {
+                $data[(int) $def->id] = ['actual' => $computed['downtime_pct']];
+                continue;
+            }
+            if (str_contains($name, 'mttr') && $computed['mttr'] !== null) {
+                $data[(int) $def->id] = ['actual' => $computed['mttr']];
+                continue;
+            }
+            if (str_contains($name, 'mtbf') && $computed['mtbf'] !== null) {
+                $data[(int) $def->id] = ['actual' => $computed['mtbf']];
+                continue;
+            }
+        }
+
+        return response()->json([
+            'data' => $data,
+            'source' => [
+                'date' => $date->toDateString(),
+                'total_downtime_hour' => $downtimeHour,
+                'total_tickets' => $totalTickets,
+                'working_hours' => $workingHours,
+                'payload_keys_used' => [
+                    'downtime' => $downtimeKey,
+                    'tickets' => $ticketsKey,
+                ],
+            ],
+            'computed' => $computed,
+        ]);
+    }
+
+    /**
+     * Month-to-date accumulation (akumulasi) for additional fields.
+     *
+     * Returns sums of numeric additional fields across all dates in the selected month,
+     * grouped by kpi_definition_id.
+     */
+    public function akumulasi(Request $request)
+    {
+        Gate::authorize('create kpi');
+
+        $user = auth()->user();
+
+        $dateStr = (string) $request->query('date', '');
+        if (trim($dateStr) === '') {
+            return response()->json(['data' => []]);
+        }
+
+        try {
+            $date = Carbon::parse($dateStr);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Invalid date'], 422);
+        }
+
+        $departmentId = null;
+        if ($user->can_access_all_departments) {
+            $departmentId = $request->filled('department_id') ? (int) $request->query('department_id') : null;
+        } else {
+            $departmentId = (int) $user->department_id;
+        }
+
+        if (!$departmentId) {
+            return response()->json(['data' => []]);
+        }
+
+        if (!$user->canAccessDepartment($departmentId)) {
+            abort(403, 'You do not have access to this department.');
+        }
+
+        $idsRaw = $request->query('kpi_definition_ids', []);
+        if (is_string($idsRaw)) {
+            $kpiDefinitionIds = array_filter(array_map('intval', preg_split('/\s*,\s*/', $idsRaw)));
+        } elseif (is_array($idsRaw)) {
+            $kpiDefinitionIds = array_filter(array_map('intval', $idsRaw));
+        } else {
+            $kpiDefinitionIds = [];
+        }
+
+        $kpiDefinitionIds = array_values(array_unique(array_filter($kpiDefinitionIds, fn ($id) => $id > 0)));
+        if (!$kpiDefinitionIds) {
+            return response()->json(['data' => []]);
+        }
+
+        $definitions = KpiDefinition::query()
+            ->whereIn('id', $kpiDefinitionIds)
+            ->where('department_id', $departmentId)
+            ->where('is_active', 1)
+            ->with([
+                'template' => function ($q) {
+                    $q->where('is_active', 1);
+                },
+                'template.fields' => function ($q) {
+                    $q->orderBy('sort_order');
+                },
+            ])
+            ->get()
+            ->filter(fn ($kpi) => (bool) $kpi->template);
+
+        $defIds = $definitions->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        if (!$defIds) {
+            return response()->json(['data' => []]);
+        }
+
+        $numericKeysByDef = [];
+        foreach ($definitions as $def) {
+            $keys = $def->template->fields
+                ->where('field_type', '!=', 'calculated')
+                ->filter(fn ($f) => in_array($f->field_type, ['number', 'decimal', 'accounting'], true))
+                ->pluck('field_key')
+                ->filter()
+                ->values()
+                ->all();
+            $numericKeysByDef[(int) $def->id] = $keys;
+        }
+
+        $start = $date->copy()->startOfMonth()->toDateString();
+        $end = $date->copy()->endOfMonth()->toDateString();
+
+        $entries = KpiEntry::query()
+            ->whereIn('kpi_definition_id', $defIds)
+            ->whereBetween('entry_date', [$start, $end])
+            ->get(['kpi_definition_id', 'dynamic_fields']);
+
+        $sums = [];
+        foreach ($defIds as $defId) {
+            $defId = (int) $defId;
+            $sums[$defId] = [];
+            foreach (($numericKeysByDef[$defId] ?? []) as $key) {
+                $sums[$defId][$key] = 0.0;
+            }
+        }
+
+        foreach ($entries as $entry) {
+            $defId = (int) $entry->kpi_definition_id;
+            $fields = is_array($entry->dynamic_fields) ? $entry->dynamic_fields : [];
+
+            foreach (($numericKeysByDef[$defId] ?? []) as $key) {
+                $val = $fields[$key] ?? null;
+                if ($val === null || $val === '') {
+                    continue;
+                }
+                if (!is_numeric($val)) {
+                    continue;
+                }
+                $sums[$defId][$key] = ($sums[$defId][$key] ?? 0.0) + (float) $val;
+            }
+        }
+
+        return response()->json([
+            'data' => $sums,
+            'month' => $date->format('Y-m'),
+        ]);
+    }
+
+    /**
+     * Existing entries for the selected date.
+     *
+     * Used by the batch create form to show that (kpi_definition_id, entry_date) is unique
+     * and prevent users from thinking they must fill already-submitted KPIs.
+     */
+    public function existing(Request $request)
+    {
+        Gate::authorize('create kpi');
+
+        $user = auth()->user();
+
+        $dateStr = (string) $request->query('date', '');
+        if (trim($dateStr) === '') {
+            return response()->json(['data' => []]);
+        }
+
+        try {
+            $date = Carbon::parse($dateStr)->toDateString();
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Invalid date'], 422);
+        }
+
+        $departmentId = null;
+        if ($user->can_access_all_departments) {
+            $departmentId = $request->filled('department_id') ? (int) $request->query('department_id') : null;
+        } else {
+            $departmentId = (int) $user->department_id;
+        }
+
+        if (!$departmentId) {
+            return response()->json(['data' => []]);
+        }
+
+        if (!$user->canAccessDepartment($departmentId)) {
+            abort(403);
+        }
+
+        $defIds = $request->query('kpi_definition_ids', []);
+        if (!is_array($defIds)) {
+            $defIds = [];
+        }
+        $defIds = array_values(array_filter(array_map('intval', $defIds)));
+        if (empty($defIds)) {
+            return response()->json(['data' => []]);
+        }
+
+        $validDefIds = KpiDefinition::query()
+            ->where('department_id', $departmentId)
+            ->whereIn('id', $defIds)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (empty($validDefIds)) {
+            return response()->json(['data' => []]);
+        }
+
+        $entries = KpiEntry::query()
+            ->where('department_id', $departmentId)
+            ->whereDate('entry_date', $date)
+            ->whereIn('kpi_definition_id', $validDefIds)
+            ->get(['id', 'kpi_definition_id', 'target', 'actual', 'status', 'notes']);
+
+        $data = [];
+        foreach ($entries as $entry) {
+            $entryId = (int) $entry->id;
+            $defId = (int) $entry->kpi_definition_id;
+            $data[$defId] = [
+                'id' => $entryId,
+                'target' => $entry->target,
+                'actual' => $entry->actual,
+                'status' => $entry->status,
+                'notes' => $entry->notes,
+                'edit_url' => route('kpi.entries.edit', $entryId),
+                'show_url' => route('kpi.entries.show', $entryId),
+            ];
+        }
+
+        return response()->json([
+            'data' => $data,
+            'date' => $date,
+        ]);
     }
 
     /**
@@ -234,11 +638,16 @@ class KpiEntryController extends Controller
         $template = $kpiDefinition->template;
 
         $dynamicFields = $validated['dynamic_fields'] ?? [];
+        $dynamicFields = $this->enrichDynamicFieldsForTemplate($template, $dynamicFields);
+        $validated['dynamic_fields'] = $dynamicFields;
         if ($template->actual_mode === 'aggregated') {
             $computedActual = $this->computeAggregatedActual($template, $dynamicFields);
             if ($computedActual === null) {
+                $message = ($template->actual_aggregation === 'formula')
+                    ? 'Actual is computed by formula. Please enter numeric values for all referenced fields.'
+                    : 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.';
                 return back()->withInput()->withErrors([
-                    'actual' => 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.'
+                    'actual' => $message,
                 ]);
             }
 
@@ -423,10 +832,40 @@ class KpiEntryController extends Controller
 
         $entriesPayload = $validated['entries'] ?? [];
         $requestedKpiIds = array_values(array_filter(array_map('intval', array_keys($entriesPayload))));
+
+        $singleKpiId = $request->input('submit_kpi_definition_id');
+        $singleKpiId = ($singleKpiId === null || $singleKpiId === '') ? null : (int) $singleKpiId;
+        if ($singleKpiId) {
+            // Only save the selected KPI, even if other KPIs have input.
+            $requestedKpiIds = [$singleKpiId];
+            $singlePayload = $entriesPayload[$singleKpiId] ?? $entriesPayload[(string) $singleKpiId] ?? null;
+            if (!is_array($singlePayload)) {
+                return back()->withInput()->withErrors([
+                    'entries' => 'Selected KPI payload is missing.'
+                ]);
+            }
+            $entriesPayload = [$singleKpiId => $singlePayload];
+        }
         if (empty($requestedKpiIds)) {
             return back()->withInput()->withErrors([
                 'entries' => 'No KPIs were submitted.'
             ]);
+        }
+
+        // Idempotency guard: never create duplicates for the same KPI + date.
+        // This protects against re-submitting a KPI after saving it individually.
+        $existingEntryIdsByKpiId = KpiEntry::query()
+            ->where('department_id', $departmentId)
+            ->whereDate('entry_date', $entryDate)
+            ->whereIn('kpi_definition_id', $requestedKpiIds)
+            ->pluck('id', 'kpi_definition_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if ($singleKpiId && isset($existingEntryIdsByKpiId[$singleKpiId])) {
+            return redirect()
+                ->route('kpi.entries.edit', $existingEntryIdsByKpiId[$singleKpiId])
+                ->with('success', 'This KPI has already been submitted for the selected date. Opened the existing entry for editing.');
         }
 
         $kpiDefinitions = KpiDefinition::query()
@@ -446,8 +885,14 @@ class KpiEntryController extends Controller
 
         $errors = [];
         $entriesToCreate = [];
+        $skippedExistingCount = 0;
 
         foreach ($requestedKpiIds as $kpiId) {
+            if (isset($existingEntryIdsByKpiId[$kpiId])) {
+                $skippedExistingCount++;
+                continue;
+            }
+
             $payload = is_array($entriesPayload[$kpiId] ?? null) ? $entriesPayload[$kpiId] : [];
             $dynamicFields = is_array($payload['dynamic_fields'] ?? null) ? $payload['dynamic_fields'] : [];
             $capaAreas = is_array($payload['capa_areas'] ?? null) ? $payload['capa_areas'] : [];
@@ -482,6 +927,8 @@ class KpiEntryController extends Controller
                 continue;
             }
 
+            $dynamicFields = $this->enrichDynamicFieldsForTemplate($template, $dynamicFields);
+
             // Resolve target: use submitted value, otherwise fall back to yearly target.
             $targetValue = $payload['target'] ?? null;
             if ($targetValue === '' || $targetValue === null) {
@@ -501,7 +948,10 @@ class KpiEntryController extends Controller
             if ($template->actual_mode === 'aggregated') {
                 $computedActual = $this->computeAggregatedActual($template, $dynamicFields);
                 if ($computedActual === null) {
-                    $errors["entries.$kpiId.actual"] = 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.';
+                    $message = ($template->actual_aggregation === 'formula')
+                        ? 'Actual is computed by formula. Please enter numeric values for all referenced fields.'
+                        : 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.';
+                    $errors["entries.$kpiId.actual"] = $message;
                     continue;
                 }
                 $actualValue = $computedActual;
@@ -550,12 +1000,15 @@ class KpiEntryController extends Controller
 
         if (empty($entriesToCreate)) {
             return back()->withInput()->withErrors([
-                'entries' => 'Nothing to submit. Fill at least one KPI before submitting.'
+                'entries' => $skippedExistingCount > 0
+                    ? 'All submitted KPIs were already submitted for this date.'
+                    : 'Nothing to submit. Fill at least one KPI before submitting.'
             ]);
         }
 
-        // Prevent duplicates per (kpi_definition_id, entry_date)
+        // Safety check: prevent duplicates if anything slips through.
         $duplicateKpiIds = KpiEntry::query()
+            ->where('department_id', $departmentId)
             ->whereDate('entry_date', $entryDate)
             ->whereIn('kpi_definition_id', array_keys($entriesToCreate))
             ->pluck('kpi_definition_id')
@@ -563,11 +1016,14 @@ class KpiEntryController extends Controller
             ->all();
 
         if (!empty($duplicateKpiIds)) {
-            $dupErrors = [];
             foreach ($duplicateKpiIds as $dupId) {
-                $dupErrors["entries.$dupId.actual"] = 'An entry already exists for this KPI and date.';
+                unset($entriesToCreate[$dupId]);
             }
-            return back()->withInput()->withErrors($dupErrors);
+            if (empty($entriesToCreate)) {
+                return back()->withInput()->withErrors([
+                    'entries' => 'All submitted KPIs were already submitted for this date.'
+                ]);
+            }
         }
 
         DB::beginTransaction();
@@ -667,6 +1123,24 @@ class KpiEntryController extends Controller
                 $message .= " CAPA created for {$createdCapaCount} KPI(s).";
             }
 
+            if ($skippedExistingCount > 0) {
+                $message .= " Skipped {$skippedExistingCount} KPI(s) already submitted for this date.";
+            }
+
+            if ($singleKpiId) {
+                // Stay on create page and preserve other (unsaved) KPI inputs.
+                $input = $request->all();
+                unset($input['submit_kpi_definition_id']);
+                if (isset($input['entries']) && is_array($input['entries'])) {
+                    unset($input['entries'][$singleKpiId]);
+                    unset($input['entries'][(string) $singleKpiId]);
+                }
+
+                return redirect()->back()
+                    ->with('success', "Saved 1 KPI entry.")
+                    ->withInput($input);
+            }
+
             return redirect()->route('kpi.entries.index')->with('success', $message);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -709,6 +1183,7 @@ class KpiEntryController extends Controller
         $entry->load([
             'template.fields',
             'template.departments',
+            'kpiDefinition',
             'department',
             'creator',
             'capaAreas.problems.causes.actionPlans'
@@ -734,6 +1209,7 @@ class KpiEntryController extends Controller
                 $query->orderBy('sort_order');
             },
             'template.departments',
+            'kpiDefinition',
             'department',
             'capaAreas.problems.causes.actionPlans'
         ]);
@@ -788,11 +1264,18 @@ class KpiEntryController extends Controller
         ]);
 
         $dynamicFields = $validated['dynamic_fields'] ?? [];
+        if ($entry->template) {
+            $dynamicFields = $this->enrichDynamicFieldsForTemplate($entry->template, $dynamicFields);
+        }
+        $validated['dynamic_fields'] = $dynamicFields;
         if ($entry->template && $entry->template->actual_mode === 'aggregated') {
             $computedActual = $this->computeAggregatedActual($entry->template, $dynamicFields);
             if ($computedActual === null) {
+                $message = ($entry->template->actual_aggregation === 'formula')
+                    ? 'Actual is computed by formula. Please enter numeric values for all referenced fields.'
+                    : 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.';
                 return back()->withInput()->withErrors([
-                    'actual' => 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.'
+                    'actual' => $message,
                 ]);
             }
 
@@ -975,6 +1458,15 @@ class KpiEntryController extends Controller
 
     private function computeAggregatedActual(KpiTemplate $template, array $dynamicFields): ?float
     {
+        if ($template->actual_aggregation === 'formula') {
+            $formula = trim((string) ($template->actual_formula ?? ''));
+            if ($formula === '') {
+                return null;
+            }
+
+            return $this->evaluateActualFormula($formula, $dynamicFields);
+        }
+
         $fieldKeys = $template->actual_field_keys ?? [];
         if (empty($fieldKeys)) {
             return null;
@@ -1002,6 +1494,326 @@ class KpiEntryController extends Controller
             default:
                 return array_sum($values);
         }
+    }
+
+    private function evaluateActualFormula(string $formula, array $dynamicFields): ?float
+    {
+        $expression = ltrim(trim($formula));
+        if (str_starts_with($expression, '=')) {
+            $expression = ltrim(substr($expression, 1));
+        }
+
+        if ($expression === '') {
+            return null;
+        }
+
+        // Normalize dynamic field keys for case-insensitive lookup.
+        $dynamicMap = [];
+        foreach ($dynamicFields as $key => $value) {
+            $dynamicMap[strtolower((string) $key)] = $value;
+        }
+
+        $tokens = [];
+        $len = strlen($expression);
+        $i = 0;
+        $prevType = null; // number|ident|op|lparen|rparen
+
+        while ($i < $len) {
+            $ch = $expression[$i];
+
+            if (ctype_space($ch)) {
+                $i++;
+                continue;
+            }
+
+            if ($ch === '(') {
+                $tokens[] = ['type' => 'lparen'];
+                $prevType = 'lparen';
+                $i++;
+                continue;
+            }
+            if ($ch === ')') {
+                $tokens[] = ['type' => 'rparen'];
+                $prevType = 'rparen';
+                $i++;
+                continue;
+            }
+
+            if ($ch === '+' || $ch === '-' || $ch === '*' || $ch === '/') {
+                $isUnary = ($prevType === null || $prevType === 'op' || $prevType === 'lparen');
+                if ($isUnary && $ch === '+') {
+                    $i++;
+                    continue; // unary plus: ignore
+                }
+
+                $op = ($isUnary && $ch === '-') ? 'u-' : $ch;
+                $tokens[] = ['type' => 'op', 'value' => $op];
+                $prevType = 'op';
+                $i++;
+                continue;
+            }
+
+            // Number: digits with optional decimal part.
+            if (ctype_digit($ch) || $ch === '.') {
+                $start = $i;
+                $dotCount = 0;
+                while ($i < $len) {
+                    $c = $expression[$i];
+                    if ($c === '.') {
+                        $dotCount++;
+                        if ($dotCount > 1) {
+                            break;
+                        }
+                        $i++;
+                        continue;
+                    }
+                    if (!ctype_digit($c)) {
+                        break;
+                    }
+                    $i++;
+                }
+                $raw = substr($expression, $start, $i - $start);
+                if ($raw === '.' || $raw === '') {
+                    return null;
+                }
+                if (!is_numeric($raw)) {
+                    return null;
+                }
+                $tokens[] = ['type' => 'number', 'value' => (float) $raw];
+                $prevType = 'number';
+                continue;
+            }
+
+            // Identifier: field key (letters/underscore, then letters/digits/underscore)
+            if (ctype_alpha($ch) || $ch === '_') {
+                $start = $i;
+                $i++;
+                while ($i < $len) {
+                    $c = $expression[$i];
+                    if (!(ctype_alnum($c) || $c === '_')) {
+                        break;
+                    }
+                    $i++;
+                }
+                $ident = substr($expression, $start, $i - $start);
+                $tokens[] = ['type' => 'ident', 'value' => $ident];
+                $prevType = 'ident';
+                continue;
+            }
+
+            // Unsupported character
+            return null;
+        }
+
+        // Shunting-yard to RPN
+        $precedence = ['u-' => 3, '*' => 2, '/' => 2, '+' => 1, '-' => 1];
+        $rightAssoc = ['u-' => true];
+
+        $output = [];
+        $ops = [];
+
+        foreach ($tokens as $token) {
+            if ($token['type'] === 'number' || $token['type'] === 'ident') {
+                $output[] = $token;
+                continue;
+            }
+
+            if ($token['type'] === 'op') {
+                $op1 = $token['value'];
+                if (!isset($precedence[$op1])) {
+                    return null;
+                }
+
+                while (!empty($ops)) {
+                    $top = end($ops);
+                    if (($top['type'] ?? null) !== 'op') {
+                        break;
+                    }
+                    $op2 = $top['value'];
+                    $p1 = $precedence[$op1];
+                    $p2 = $precedence[$op2] ?? null;
+                    if ($p2 === null) {
+                        break;
+                    }
+
+                    $isRight = $rightAssoc[$op1] ?? false;
+                    if ((!$isRight && $p1 <= $p2) || ($isRight && $p1 < $p2)) {
+                        $output[] = array_pop($ops);
+                        continue;
+                    }
+                    break;
+                }
+
+                $ops[] = $token;
+                continue;
+            }
+
+            if ($token['type'] === 'lparen') {
+                $ops[] = $token;
+                continue;
+            }
+
+            if ($token['type'] === 'rparen') {
+                $found = false;
+                while (!empty($ops)) {
+                    $top = array_pop($ops);
+                    if (($top['type'] ?? null) === 'lparen') {
+                        $found = true;
+                        break;
+                    }
+                    $output[] = $top;
+                }
+                if (!$found) {
+                    return null;
+                }
+                continue;
+            }
+
+            return null;
+        }
+
+        while (!empty($ops)) {
+            $top = array_pop($ops);
+            if (($top['type'] ?? null) === 'lparen' || ($top['type'] ?? null) === 'rparen') {
+                return null;
+            }
+            $output[] = $top;
+        }
+
+        // Evaluate RPN
+        $stack = [];
+        foreach ($output as $token) {
+            if ($token['type'] === 'number') {
+                $stack[] = (float) $token['value'];
+                continue;
+            }
+
+            if ($token['type'] === 'ident') {
+                $key = strtolower((string) $token['value']);
+                if (!array_key_exists($key, $dynamicMap) || !is_numeric($dynamicMap[$key])) {
+                    return null;
+                }
+                $stack[] = (float) $dynamicMap[$key];
+                continue;
+            }
+
+            if ($token['type'] === 'op') {
+                $op = $token['value'];
+                if ($op === 'u-') {
+                    if (count($stack) < 1) {
+                        return null;
+                    }
+                    $a = array_pop($stack);
+                    $stack[] = -$a;
+                    continue;
+                }
+
+                if (count($stack) < 2) {
+                    return null;
+                }
+                $b = array_pop($stack);
+                $a = array_pop($stack);
+
+                switch ($op) {
+                    case '+':
+                        $stack[] = $a + $b;
+                        break;
+                    case '-':
+                        $stack[] = $a - $b;
+                        break;
+                    case '*':
+                        $stack[] = $a * $b;
+                        break;
+                    case '/':
+                        if ($b == 0.0) {
+                            return null;
+                        }
+                        $stack[] = $a / $b;
+                        break;
+                    default:
+                        return null;
+                }
+                continue;
+            }
+
+            return null;
+        }
+
+        if (count($stack) !== 1) {
+            return null;
+        }
+
+        return (float) $stack[0];
+    }
+
+    private function enrichDynamicFieldsForTemplate(KpiTemplate $template, array $dynamicFields): array
+    {
+        $templateCode = (string) ($template->code ?? '');
+        if ($templateCode !== self::TEMPLATE_CNC_WASTE && $templateCode !== self::TEMPLATE_PD_MP_OT) {
+            return $dynamicFields;
+        }
+
+        $getNum = function (string $key) use ($dynamicFields): ?float {
+            if (!array_key_exists($key, $dynamicFields)) return null;
+            $val = $dynamicFields[$key];
+            if ($val === null || $val === '') return null;
+            if (!is_numeric($val)) return null;
+            return (float) $val;
+        };
+
+        if ($templateCode === self::TEMPLATE_CNC_WASTE) {
+            $cb1 = $getNum('cb1');
+            $cb2 = $getNum('cb2');
+            $cb3 = $getNum('cb3');
+            $cb4 = $getNum('cb4');
+            $hasilProduksi = $getNum('hasil_produksi');
+
+            $hasAnyWaste = ($cb1 !== null) || ($cb2 !== null) || ($cb3 !== null) || ($cb4 !== null);
+            if ($hasAnyWaste) {
+                $totalWasteKg = (float) (($cb1 ?? 0.0) + ($cb2 ?? 0.0) + ($cb3 ?? 0.0) + ($cb4 ?? 0.0));
+                $dynamicFields['total_waste_kg'] = $totalWasteKg;
+
+                if ($hasilProduksi !== null && $hasilProduksi > 0) {
+                    $dynamicFields['total_waste_pct'] = ($totalWasteKg / $hasilProduksi) * 100.0;
+                }
+            }
+
+            $moneyKeys = ['d6', 'd7', 'd8', 'd9', 'd11', 'd12', 'd13'];
+            $hasAnyMoney = false;
+            $copq = 0.0;
+            foreach ($moneyKeys as $key) {
+                $val = $getNum($key);
+                if ($val === null) continue;
+                $hasAnyMoney = true;
+                $copq += $val;
+            }
+            if ($hasAnyMoney) {
+                $dynamicFields['copq_material'] = $copq;
+            }
+        }
+
+        if ($templateCode === self::TEMPLATE_PD_MP_OT) {
+            $chargeKeys = ['ot_charge_pd1', 'ot_charge_pd2', 'ot_charge_pd3', 'ot_charge_pd4', 'ot_charge_pd5'];
+            $hasAnyCharge = false;
+            $totalCharge = 0.0;
+            foreach ($chargeKeys as $key) {
+                $val = $getNum($key);
+                if ($val === null) continue;
+                $hasAnyCharge = true;
+                $totalCharge += $val;
+            }
+            if ($hasAnyCharge) {
+                $dynamicFields['total_ot_charge'] = $totalCharge;
+            }
+
+            $salesAmount = $getNum('sales_amount');
+            $targetSales = $getNum('target_sales');
+            if ($salesAmount !== null && $targetSales !== null && $targetSales > 0) {
+                $dynamicFields['achievement_pct'] = ($salesAmount / $targetSales) * 100.0;
+            }
+        }
+
+        return $dynamicFields;
     }
 
 }

@@ -1,16 +1,16 @@
 <x-app-layout>
     <div class="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
-        <div class="sm:flex sm:justify-between sm:items-center mb-8">
+        <div class="sm:flex sm:justify-between sm:items-center mb-8 gap-4">
             <div class="mb-4 sm:mb-0">
                 <h1 class="text-2xl md:text-3xl text-gray-800 dark:text-gray-100 font-bold">Dashboard</h1>
                 <div class="text-sm text-gray-500 dark:text-gray-400">Actual vs Target ({{ $selectedMonthLabel ?? 'Selected Month' }})</div>
                 <div class="text-sm text-gray-500 dark:text-gray-400">KPI: {{ $kpiChartMeta['template_title'] ?? 'All KPIs' }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}</div>
             </div>
 
-            <form method="GET" action="{{ route('dashboard') }}" class="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
-                <div>
+            <form method="GET" action="{{ route('dashboard') }}" class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end min-w-0">
+                <div class="sm:col-span-3 min-w-0">
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Department</label>
-                    <select name="department" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                    <select name="department" class="form-select w-full min-w-0 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                         <option value="">All Departments</option>
                         @foreach($departments as $dept)
                             <option value="{{ $dept->id }}" {{ (string)$selectedDepartmentId === (string)$dept->id ? 'selected' : '' }}>
@@ -20,14 +20,14 @@
                     </select>
                 </div>
 
-                <div>
+                <div class="sm:col-span-3 min-w-0">
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Month</label>
                     <input type="month" name="month" value="{{ $selectedMonth ?? '' }}" class="form-input w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200" />
                 </div>
 
-                <div>
+                <div class="sm:col-span-3 min-w-0">
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">KPI</label>
-                    <select name="kpi_definition_id" class="form-select w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                    <select name="kpi_definition_id" class="form-select w-full max-w-full min-w-0 truncate rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                         <option value="">All KPIs</option>
                         @foreach($kpis as $kpi)
                             @php
@@ -35,13 +35,13 @@
                                 $tplCode = $kpi->template?->code;
                             @endphp
                             <option value="{{ $kpi->id }}" {{ (string)($selectedKpiDefinitionId ?? '') === (string)$kpi->id ? 'selected' : '' }}>
-                                {{ $kpiName }}{{ $tplCode ? ' ('.$tplCode.')' : '' }}
+                                {{ \Illuminate\Support\Str::limit($kpiName . ($tplCode ? ' ('.$tplCode.')' : ''), 60) }}
                             </option>
                         @endforeach
                     </select>
                 </div>
 
-                <div class="flex gap-2">
+                <div class="sm:col-span-3 flex gap-2 justify-end">
                     <button type="submit" class="btn bg-gray-900 text-gray-100 hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-800 dark:hover:bg-white">Apply</button>
                     <a href="{{ route('dashboard') }}" class="btn bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Reset</a>
                     <a href="{{ route('dashboard', array_merge(request()->query(), ['fullscreen' => 1])) }}" class="btn bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Fullscreen</a>
@@ -72,30 +72,62 @@
                             ->filter(fn ($v) => is_iterable($v))
                             ->map(fn ($v) => collect($v));
 
+                        $isCncWaste = (string) ($kpiChartMeta['template_code'] ?? '') === 'TPL_PD_WASTE_CNC_BENDING';
+                        if ($isCncWaste) {
+                            // Waste CNC Bending has no target/status; show Actual + all additional fields.
+                            $kpiTableSeries = $kpiTableSeries->except(['target']);
+                        }
+
+                        if ($isCncWaste) {
+                            // Custom row order for CNC:
+                            // Hasil Produksi -> Total Waste (KG) -> Total Waste (%) -> the rest
+                            $ordered = collect();
+
+                            if ($kpiTableSeries->has('field:hasil_produksi')) {
+                                $ordered['field:hasil_produksi'] = $kpiTableSeries['field:hasil_produksi'];
+                            }
+                            if ($kpiTableSeries->has('field:total_waste_kg')) {
+                                $ordered['field:total_waste_kg'] = $kpiTableSeries['field:total_waste_kg'];
+                            }
+                            if ($kpiTableSeries->has('actual')) {
+                                $ordered['actual'] = $kpiTableSeries['actual'];
+                            }
+
+                            $kpiTableSeries = $ordered->merge(
+                                $kpiTableSeries->except(['field:hasil_produksi', 'field:total_waste_kg', 'actual'])
+                            );
+                        }
+
                         $targetSeries = $kpiTableSeries->get('target', collect());
                         $actualSeries = $kpiTableSeries->get('actual', collect());
 
                         $operator = $kpiChartMeta['target_operator'] ?? 'gte';
 
-                        $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries, $operator) {
-                            $target = $targetSeries->get($index);
-                            $actual = $actualSeries->get($index);
+                        $statusSeries = collect();
+                        if (!$isCncWaste) {
+                            $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries, $operator) {
+                                $target = $targetSeries->get($index);
+                                $actual = $actualSeries->get($index);
 
-                            if ($target === null || $target === '' || $actual === null || $actual === '') return null;
-                            if (!is_numeric($target) || !is_numeric($actual)) return null;
+                                if ($target === null || $target === '' || $actual === null || $actual === '') return null;
+                                if (!is_numeric($target) || !is_numeric($actual)) return null;
 
-                            if ($operator === 'lte') {
-                                return ((float) $actual <= (float) $target) ? 'OK' : 'NG';
-                            }
+                                if ($operator === 'lte') {
+                                    return ((float) $actual <= (float) $target) ? 'OK' : 'NG';
+                                }
 
-                            return ((float) $actual >= (float) $target) ? 'OK' : 'NG';
-                        });
+                                return ((float) $actual >= (float) $target) ? 'OK' : 'NG';
+                            });
 
-                        $kpiTableSeries = $kpiTableSeries->merge([
-                            'status' => $statusSeries,
-                        ]);
+                            $kpiTableSeries = $kpiTableSeries->merge([
+                                'status' => $statusSeries,
+                            ]);
+                        }
 
                         $kpiUnit = $kpiChartMeta['unit'] ?? null;
+                        $showMonthlyTotals = \Illuminate\Support\Str::startsWith((string) ($kpiChartMeta['template_code'] ?? ''), 'TPL_HR_WASTE_');
+                        $showCncAverages = $isCncWaste;
+                        $cncMoneyFieldKeys = ['d6','d7','d8','d9','d11','d12','d13','copq_material'];
                         $formatKpiCell = function ($value) {
                             if ($value === null || $value === '') return '';
                             if (!is_numeric($value)) return '';
@@ -137,19 +169,36 @@
                                         @endphp
                                         <th class="p-2 whitespace-nowrap" style="{{ $dateHeaderCellStyle }}"><div class="font-semibold text-center {{ $dateHeaderTextClass }}">{{ $labelText }}</div></th>
                                     @endforeach
+                                    @if($showMonthlyTotals)
+                                        <th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Total</div></th>
+                                    @endif
+                                    @if($showCncAverages)
+                                        <th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average</div></th>
+                                        <th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average/D</div></th>
+                                    @endif
                                 </tr>
                             </thead>
                             <tbody class="text-xs font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
                                 @foreach($kpiTableSeries as $seriesName => $seriesValues)
+                                    @php
+                                        $isCncTotalRow = $isCncWaste && in_array($seriesName, ['field:total_waste_kg', 'actual'], true);
+
+                                        $numericValues = collect($seriesValues)->filter(fn ($x) => is_numeric($x))->map(fn ($x) => (float) $x);
+                                        $avgValue = $numericValues->count() ? ($numericValues->sum() / $numericValues->count()) : null;
+                                        $isCncMoneyRow = $isCncWaste
+                                            && \Illuminate\Support\Str::startsWith($seriesName, 'field:')
+                                            && in_array(substr($seriesName, 6), $cncMoneyFieldKeys, true);
+                                        $avgDValue = $isCncMoneyRow ? ($numericValues->count() ? $numericValues->sum() : null) : $avgValue;
+                                    @endphp
                                     <tr>
-                                        <td class="p-2">
+                                        <td class="p-2" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @endif>
                                             @php
                                                 $seriesLabel = $kpiSeriesLabels[$seriesName] ?? \Illuminate\Support\Str::of($seriesName)->replace('_', ' ')->title();
                                                 if (($seriesName === 'target' || $seriesName === 'actual') && !empty($kpiUnit)) {
                                                     $seriesLabel .= ' (' . $kpiUnit . ')';
                                                 }
                                             @endphp
-                                            <div class="text-gray-800 dark:text-gray-100">{{ $seriesLabel }}</div>
+                                            <div class="{{ $isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100' }}">{{ $seriesLabel }}</div>
                                         </td>
                                         @foreach($seriesValues as $v)
                                             @php
@@ -168,6 +217,11 @@
                                                         ? 'bg-green-50 dark:bg-green-900/20'
                                                         : ($v === 'NG' ? 'bg-red-50 dark:bg-red-900/20' : '');
                                                 }
+
+                                                if ($isCncTotalRow) {
+                                                    $tdStyle = 'background-color: rgb(192, 0, 0);';
+                                                    $valueTextClass = 'text-white';
+                                                }
                                             @endphp
                                             <td class="p-2 whitespace-nowrap {{ $tdClass }}" style="{{ $tdStyle }}">
                                                 @if($seriesName === 'status')
@@ -180,14 +234,43 @@
                                                     @endif
                                                 @else
                                                     <div class="text-center {{ $valueTextClass }}">
-                                                        {{ $isDynamicField ? ($v ?? '') : $formatKpiCell($v) }}
+                                                        {{ $isDynamicField ? ($isCncWaste ? $formatKpiCell($v) : ($v ?? '')) : $formatKpiCell($v) }}
                                                     </div>
                                                 @endif
                                             </td>
                                         @endforeach
+
+                                        @if($showMonthlyTotals)
+                                            @php
+                                                $isDynamicField = \Illuminate\Support\Str::startsWith($seriesName, 'field:');
+                                                $total = null;
+                                                if ($isDynamicField) {
+                                                    $total = collect($seriesValues)->filter(fn ($x) => is_numeric($x))->map(fn ($x) => (float) $x)->sum();
+                                                }
+                                            @endphp
+                                            <td class="p-2 whitespace-nowrap">
+                                                <div class="text-center text-gray-800 dark:text-gray-100">
+                                                    {{ $isDynamicField && $total !== null ? $formatKpiCell($total) : '' }}
+                                                </div>
+                                            </td>
+                                        @endif
+
+                                        @if($showCncAverages)
+                                            <td class="p-2 whitespace-nowrap" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @endif>
+                                                <div class="text-center {{ $isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100' }}">
+                                                    {{ $avgValue !== null ? $formatKpiCell($avgValue) : '' }}
+                                                </div>
+                                            </td>
+                                            <td class="p-2 whitespace-nowrap" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @endif>
+                                                <div class="text-center {{ $isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100' }}">
+                                                    {{ $avgDValue !== null ? $formatKpiCell($avgDValue) : '' }}
+                                                </div>
+                                            </td>
+                                        @endif
                                     </tr>
                                 @endforeach
                             </tbody>
+                            @if(!$isCncWaste)
                             <tfoot class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
                                 <tr>
                                     <td class="p-2">
@@ -206,6 +289,7 @@
                                     </td>
                                 </tr>
                             </tfoot>
+                            @endif
                         </table>
                     </div>
 

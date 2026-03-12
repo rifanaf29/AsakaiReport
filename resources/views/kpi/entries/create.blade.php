@@ -13,6 +13,12 @@
             </div>
             @endif
 
+            @if(session('success'))
+            <div class="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300 px-5 py-4 rounded-xl shadow-sm">
+                {{ session('success') }}
+            </div>
+            @endif
+
             @if($errors->any())
             <div class="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-5 py-4 rounded-xl shadow-sm">
                 <ul class="list-disc list-inside space-y-1">
@@ -49,6 +55,8 @@
                     <form method="POST" action="{{ route('kpi.entries.store') }}" id="kpiEntryForm">
                         @csrf
 
+                        <input type="hidden" name="submit_kpi_definition_id" id="submit_kpi_definition_id" value="">
+
                         @if(auth()->user()->can_access_all_departments)
                         <!-- Department Selection -->
                         <div class="mb-6">
@@ -83,25 +91,42 @@
                             @enderror
                         </div>
 
+                        @if(($selectedDepartmentCode ?? null) === 'MN')
+                        <div class="mb-6" id="mn-prefill-panel">
+                            <label for="mn_working_hours" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Total Working Time (Hour) <span class="text-red-500">*</span>
+                            </label>
+                            <input type="number" step="0.01" min="0" id="mn_working_hours" name="mn_working_hours"
+                                   value="{{ old('mn_working_hours', '') }}"
+                                   placeholder="e.g. 24"
+                                   class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400" id="mn-prefill-status"></div>
+                        </div>
+                        @endif
+
                         @if($kpis->isEmpty())
                             <div class="text-sm text-gray-600 dark:text-gray-300">
                                 {{ auth()->user()->can_access_all_departments && empty($selectedDepartmentId) ? 'Select a department first to load KPIs.' : 'No KPIs set for this department.' }}
                             </div>
                         @else
                             <div class="space-y-6" id="kpi-batch-container"
-                                 data-department-id="{{ (int) ($selectedDepartmentId ?? 0) }}">
+                                   data-department-id="{{ (int) ($selectedDepartmentId ?? 0) }}"
+                                   data-department-code="{{ $selectedDepartmentCode ?? '' }}">
                                 @foreach($kpis as $kpi)
                                     @php
                                         $kpiId = (int) $kpi->id;
                                         $tpl = $kpi->template;
                                         $kpiLabel = $kpi->display_name ?: ($tpl?->code ?? ('KPI #' . $kpiId));
+                                        $showMonthlyTotal = $tpl && $tpl->code && \Illuminate\Support\Str::startsWith($tpl->code, 'TPL_HR_WASTE_');
                                     @endphp
 
                                     <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-5 shadow-sm bg-white dark:bg-gray-800"
                                          data-kpi-id="{{ $kpiId }}"
+                                         data-kpi-label="{{ $kpiLabel }}"
                                          data-actual-mode="{{ $tpl?->actual_mode ?? 'manual' }}"
                                          data-actual-aggregation="{{ $tpl?->actual_aggregation ?? '' }}"
-                                         data-actual-field-keys='@json($tpl?->actual_field_keys ?? [])'>
+                                         data-actual-field-keys='@json($tpl?->actual_field_keys ?? [])'
+                                         data-actual-formula="{{ $tpl?->actual_formula ?? '' }}">
                                         <div class="flex items-start justify-between gap-4 mb-4">
                                             <div>
                                                 <div class="text-sm text-gray-500 dark:text-gray-400">KPI</div>
@@ -111,7 +136,24 @@
                                                 @endif
                                             </div>
 
-                                            <div class="text-xs text-gray-500 dark:text-gray-400" data-target-status></div>
+                                            <div class="flex items-center gap-3">
+                                                <div class="text-xs text-gray-500 dark:text-gray-400" data-target-status></div>
+                                                <button type="button" data-save-single
+                                                        class="inline-flex items-center px-3 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors">
+                                                    Save this KPI
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="hidden mb-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3"
+                                             data-existing-entry>
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="text-sm text-amber-900 dark:text-amber-200">
+                                                    <div class="font-semibold">Already submitted for this date</div>
+                                                    <div class="mt-1 text-xs text-amber-800 dark:text-amber-300" data-existing-entry-text></div>
+                                                </div>
+                                                <a href="#" class="text-xs underline text-amber-900 dark:text-amber-200 shrink-0" data-existing-entry-link target="_blank" rel="noopener noreferrer">View/Edit</a>
+                                            </div>
                                         </div>
 
                                         <input type="hidden" name="entries[{{ $kpiId }}][kpi_definition_id]" value="{{ $kpiId }}">
@@ -152,10 +194,16 @@
                                                         @php
                                                             $fieldKey = $field->field_key;
                                                             $oldVal = old('entries.' . $kpiId . '.dynamic_fields.' . $fieldKey);
+                                                            $unitOverride = is_array($kpi->field_units ?? null) ? ($kpi->field_units[$fieldKey] ?? null) : null;
+                                                            $fieldUnit = $unitOverride ?: ($field->unit ?? null);
                                                         @endphp
                                                         <div>
                                                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                                {{ $field->field_name }}@if($field->is_required) <span class="text-red-500">*</span>@endif
+                                                                {{ $field->field_name }}
+                                                                @if($fieldUnit)
+                                                                    <span class="text-xs font-normal text-gray-500 dark:text-gray-400">({{ $fieldUnit }})</span>
+                                                                @endif
+                                                                @if($field->is_required) <span class="text-red-500">*</span>@endif
                                                             </label>
                                                             @switch($field->field_type)
                                                                 @case('textarea')
@@ -175,12 +223,25 @@
                                                                     @break
                                                                 @case('number')
                                                                 @case('decimal')
-                                                                    <input type="number" step="0.01"
-                                                                           name="entries[{{ $kpiId }}][dynamic_fields][{{ $fieldKey }}]"
-                                                                           value="{{ $oldVal }}"
-                                                                           @if($field->is_required) required @endif
-                                                                           class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                                                           data-dynamic-field data-field-key="{{ $fieldKey }}">
+                                                                 @case('accounting')
+                                                                    <div class="flex items-start gap-3">
+                                                                        <input type="number" step="0.01"
+                                                                               name="entries[{{ $kpiId }}][dynamic_fields][{{ $fieldKey }}]"
+                                                                               value="{{ $oldVal }}"
+                                                                               @if($field->is_required) required @endif
+                                                                               class="flex-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                                               data-dynamic-field data-field-key="{{ $fieldKey }}">
+
+                                                                        @if($showMonthlyTotal)
+                                                                            <div class="w-36">
+                                                                                <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Total</div>
+                                                                                <div class="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 text-right"
+                                                                                     data-akumulasi
+                                                                                     data-kpi-id="{{ $kpiId }}"
+                                                                                     data-field-key="{{ $fieldKey }}">-</div>
+                                                                            </div>
+                                                                        @endif
+                                                                    </div>
                                                                     @break
                                                                 @default
                                                                     <input type="text"
@@ -259,6 +320,24 @@
             });
         }
 
+        // Single KPI save (keeps the batch flow, but submits only one KPI).
+        const kpiEntryForm = document.getElementById('kpiEntryForm');
+        const singleSubmitInput = document.getElementById('submit_kpi_definition_id');
+        if (singleSubmitInput) singleSubmitInput.value = '';
+
+        document.querySelectorAll('[data-save-single]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const card = btn.closest('[data-kpi-id]');
+                const kpiId = card?.getAttribute('data-kpi-id');
+                if (!kpiId || !kpiEntryForm || !singleSubmitInput) return;
+
+                singleSubmitInput.value = kpiId;
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+                kpiEntryForm.submit();
+            });
+        });
+
         function getDepartmentId() {
             if (document.getElementById('department_id')) {
                 return document.getElementById('department_id').value;
@@ -319,6 +398,32 @@
             if (!actualInput) return;
 
             const kpiId = card.dataset.kpiId;
+
+            if (aggregation === 'formula') {
+                const formulaRaw = (card.dataset.actualFormula || '').trim();
+                let expr = formulaRaw;
+                if (expr.startsWith('=')) expr = expr.slice(1).trim();
+
+                if (!expr) {
+                    actualInput.value = '';
+                    return;
+                }
+
+                const dynamicMap = {};
+                card.querySelectorAll(`[name^="entries[${kpiId}][dynamic_fields]"]`).forEach((input) => {
+                    const name = input.getAttribute('name') || '';
+                    const match = name.match(/\[dynamic_fields\]\[([^\]]+)\]/);
+                    if (!match) return;
+                    const key = (match[1] || '').toLowerCase();
+                    const num = parseFloat(input.value);
+                    dynamicMap[key] = Number.isFinite(num) ? num : null;
+                });
+
+                const result = evaluateArithmeticExpression(expr, dynamicMap);
+                actualInput.value = Number.isFinite(result) ? result.toFixed(2) : '';
+                return;
+            }
+
             const values = fieldKeys
                 .map((key) => {
                     const selector = `[name="entries[${kpiId}][dynamic_fields][${key}]"]`;
@@ -349,6 +454,201 @@
             }
 
             actualInput.value = Number.isFinite(result) ? result.toFixed(2) : '';
+        }
+
+        function evaluateArithmeticExpression(expression, variables) {
+            const tokens = tokenizeExpression(expression);
+            if (!tokens) return NaN;
+            const rpn = toRpn(tokens);
+            if (!rpn) return NaN;
+            return evalRpn(rpn, variables);
+        }
+
+        function tokenizeExpression(expression) {
+            const tokens = [];
+            const s = String(expression);
+            let i = 0;
+            let prevType = null; // number|ident|op|lparen|rparen
+
+            while (i < s.length) {
+                const ch = s[i];
+                if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+                    i++;
+                    continue;
+                }
+
+                if (ch === '(') {
+                    tokens.push({ type: 'lparen' });
+                    prevType = 'lparen';
+                    i++;
+                    continue;
+                }
+                if (ch === ')') {
+                    tokens.push({ type: 'rparen' });
+                    prevType = 'rparen';
+                    i++;
+                    continue;
+                }
+
+                if (ch === '+' || ch === '-' || ch === '*' || ch === '/') {
+                    const isUnary = (prevType === null || prevType === 'op' || prevType === 'lparen');
+                    if (isUnary && ch === '+') {
+                        i++;
+                        continue;
+                    }
+                    const op = (isUnary && ch === '-') ? 'u-' : ch;
+                    tokens.push({ type: 'op', value: op });
+                    prevType = 'op';
+                    i++;
+                    continue;
+                }
+
+                // Number
+                if ((ch >= '0' && ch <= '9') || ch === '.') {
+                    let start = i;
+                    let dotCount = 0;
+                    while (i < s.length) {
+                        const c = s[i];
+                        if (c === '.') {
+                            dotCount++;
+                            if (dotCount > 1) break;
+                            i++;
+                            continue;
+                        }
+                        if (!(c >= '0' && c <= '9')) break;
+                        i++;
+                    }
+                    const raw = s.slice(start, i);
+                    const num = parseFloat(raw);
+                    if (!Number.isFinite(num)) return null;
+                    tokens.push({ type: 'number', value: num });
+                    prevType = 'number';
+                    continue;
+                }
+
+                // Identifier
+                const isAlpha = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch === '_';
+                if (isAlpha) {
+                    let start = i;
+                    i++;
+                    while (i < s.length) {
+                        const c = s[i];
+                        const isAlnum = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c === '_';
+                        if (!isAlnum) break;
+                        i++;
+                    }
+                    const ident = s.slice(start, i);
+                    tokens.push({ type: 'ident', value: ident });
+                    prevType = 'ident';
+                    continue;
+                }
+
+                return null;
+            }
+
+            return tokens;
+        }
+
+        function toRpn(tokens) {
+            const precedence = { 'u-': 3, '*': 2, '/': 2, '+': 1, '-': 1 };
+            const rightAssoc = { 'u-': true };
+            const output = [];
+            const ops = [];
+
+            for (const t of tokens) {
+                if (t.type === 'number' || t.type === 'ident') {
+                    output.push(t);
+                    continue;
+                }
+                if (t.type === 'op') {
+                    const op1 = t.value;
+                    if (!(op1 in precedence)) return null;
+                    while (ops.length) {
+                        const top = ops[ops.length - 1];
+                        if (top.type !== 'op') break;
+                        const op2 = top.value;
+                        if (!(op2 in precedence)) break;
+                        const p1 = precedence[op1];
+                        const p2 = precedence[op2];
+                        const isRight = !!rightAssoc[op1];
+                        if ((!isRight && p1 <= p2) || (isRight && p1 < p2)) {
+                            output.push(ops.pop());
+                            continue;
+                        }
+                        break;
+                    }
+                    ops.push(t);
+                    continue;
+                }
+                if (t.type === 'lparen') {
+                    ops.push(t);
+                    continue;
+                }
+                if (t.type === 'rparen') {
+                    let found = false;
+                    while (ops.length) {
+                        const top = ops.pop();
+                        if (top.type === 'lparen') {
+                            found = true;
+                            break;
+                        }
+                        output.push(top);
+                    }
+                    if (!found) return null;
+                    continue;
+                }
+                return null;
+            }
+
+            while (ops.length) {
+                const top = ops.pop();
+                if (top.type === 'lparen' || top.type === 'rparen') return null;
+                output.push(top);
+            }
+            return output;
+        }
+
+        function evalRpn(rpn, variables) {
+            const stack = [];
+            for (const t of rpn) {
+                if (t.type === 'number') {
+                    stack.push(t.value);
+                    continue;
+                }
+                if (t.type === 'ident') {
+                    const key = String(t.value).toLowerCase();
+                    const val = variables[key];
+                    if (!Number.isFinite(val)) return NaN;
+                    stack.push(val);
+                    continue;
+                }
+                if (t.type === 'op') {
+                    const op = t.value;
+                    if (op === 'u-') {
+                        if (stack.length < 1) return NaN;
+                        stack.push(-stack.pop());
+                        continue;
+                    }
+                    if (stack.length < 2) return NaN;
+                    const b = stack.pop();
+                    const a = stack.pop();
+                    switch (op) {
+                        case '+': stack.push(a + b); break;
+                        case '-': stack.push(a - b); break;
+                        case '*': stack.push(a * b); break;
+                        case '/':
+                            if (b === 0) return NaN;
+                            stack.push(a / b);
+                            break;
+                        default:
+                            return NaN;
+                    }
+                    continue;
+                }
+                return NaN;
+            }
+
+            return stack.length === 1 ? stack[0] : NaN;
         }
 
         async function loadYearlyTargetForCard(card) {
@@ -386,6 +686,222 @@
                 }
             } catch (error) {
                 setTargetStatus(card, '(failed to load target)', 'error');
+            }
+        }
+
+        function formatAkumulasiNumber(value) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) return '-';
+            const fixed = num.toFixed(2);
+            // Trim trailing zeros (e.g. 10.00 -> 10, 10.50 -> 10.5)
+            return fixed.replace(/\.00$/, '').replace(/(\.[0-9])0$/, '$1');
+        }
+
+        function escapeHtml(value) {
+            const s = String(value ?? '');
+            return s
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function setCardExistingEntry(card, entry) {
+            const panel = card.querySelector('[data-existing-entry]');
+            const textEl = card.querySelector('[data-existing-entry-text]');
+            const linkEl = card.querySelector('[data-existing-entry-link]');
+
+            const getOrCreatePlaceholder = () => {
+                const existing = card.previousElementSibling;
+                if (existing && existing.matches('[data-existing-placeholder]')) {
+                    return existing;
+                }
+
+                const el = document.createElement('div');
+                el.setAttribute('data-existing-placeholder', '');
+                el.className = 'rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-4';
+                card.parentNode?.insertBefore(el, card);
+                return el;
+            };
+
+            const removePlaceholder = () => {
+                const prev = card.previousElementSibling;
+                if (prev && prev.matches('[data-existing-placeholder]')) {
+                    prev.remove();
+                }
+            };
+
+            const targetInput = card.querySelector('[data-target-input]');
+            const actualInput = card.querySelector('[data-actual-input]');
+            const kpiId = card.dataset.kpiId;
+            const notesInput = kpiId ? card.querySelector(`textarea[name="entries[${kpiId}][notes]"]`) : null;
+
+            const controls = card.querySelectorAll('input, textarea, select, button');
+
+            const stashValue = (el, key) => {
+                if (!el) return;
+                const prevKey = `prev${key}`;
+                if (el.dataset[prevKey] === undefined) {
+                    el.dataset[prevKey] = el.value ?? '';
+                }
+            };
+            const restoreValue = (el, key) => {
+                if (!el) return;
+                const prevKey = `prev${key}`;
+                if (el.dataset[prevKey] !== undefined) {
+                    el.value = el.dataset[prevKey];
+                    delete el.dataset[prevKey];
+                }
+            };
+
+            if (!entry) {
+                removePlaceholder();
+                card.classList.remove('hidden');
+
+                if (panel) panel.classList.add('hidden');
+                if (textEl) textEl.textContent = '';
+                if (linkEl) linkEl.setAttribute('href', '#');
+
+                restoreValue(targetInput, 'Target');
+                restoreValue(actualInput, 'Actual');
+                restoreValue(notesInput, 'Notes');
+                if (targetInput && targetInput.dataset.prevAutofilled !== undefined) {
+                    targetInput.dataset.autofilled = targetInput.dataset.prevAutofilled;
+                    delete targetInput.dataset.prevAutofilled;
+                }
+
+                controls.forEach((el) => {
+                    el.disabled = false;
+                });
+
+                // Re-apply aggregated actual state if needed.
+                applyActualMode(card);
+                return;
+            }
+
+            // Hide the full card to reduce confusion, and show a compact placeholder instead.
+            const placeholder = getOrCreatePlaceholder();
+            const label = card.dataset.kpiLabel || card.querySelector('.text-lg')?.textContent?.trim() || `KPI #${card.dataset.kpiId}`;
+            const href = entry.edit_url || entry.show_url || '#';
+            placeholder.innerHTML = `
+                <div class="flex items-start justify-between gap-3">
+                    <div class="text-sm text-amber-900 dark:text-amber-200">
+                        <div class="font-semibold">${escapeHtml(label)} already submitted</div>
+                        <div class="mt-1 text-xs text-amber-800 dark:text-amber-300">Target: ${escapeHtml(String(entry.target ?? ''))} • Actual: ${escapeHtml(String(entry.actual ?? ''))} • Status: ${escapeHtml(String(entry.status ?? ''))}</div>
+                    </div>
+                    <a href="${escapeHtml(href)}" class="text-xs underline text-amber-900 dark:text-amber-200 shrink-0" target="_blank" rel="noopener noreferrer">View/Edit</a>
+                </div>
+            `;
+
+            card.classList.add('hidden');
+
+            stashValue(targetInput, 'Target');
+            stashValue(actualInput, 'Actual');
+            stashValue(notesInput, 'Notes');
+            if (targetInput && targetInput.dataset.prevAutofilled === undefined) {
+                targetInput.dataset.prevAutofilled = targetInput.dataset.autofilled ?? '';
+            }
+
+            if (targetInput && entry.target !== undefined && entry.target !== null) {
+                targetInput.value = entry.target;
+                targetInput.dataset.autofilled = '0';
+            }
+            if (actualInput && entry.actual !== undefined && entry.actual !== null) {
+                actualInput.value = entry.actual;
+            }
+            if (notesInput && entry.notes) {
+                notesInput.value = entry.notes;
+            }
+
+            if (panel) panel.classList.remove('hidden');
+            if (textEl) {
+                const target = entry.target ?? '';
+                const actual = entry.actual ?? '';
+                const status = entry.status ?? '';
+                textEl.textContent = `Target: ${target} • Actual: ${actual} • Status: ${status}`;
+            }
+            if (linkEl) {
+                linkEl.setAttribute('href', entry.edit_url || entry.show_url || '#');
+            }
+
+            controls.forEach((el) => {
+                el.disabled = true;
+            });
+        }
+
+        async function loadExistingEntriesForAllCards() {
+            const container = document.getElementById('kpi-batch-container');
+            if (!container) return;
+
+            const entryDate = document.getElementById('entry_date')?.value;
+            const departmentId = getDepartmentId();
+            if (!entryDate || !departmentId) return;
+
+            const cards = Array.from(container.querySelectorAll('[data-kpi-id]'));
+            const kpiIds = cards
+                .map((card) => parseInt(card.dataset.kpiId, 10))
+                .filter((id) => Number.isFinite(id) && id > 0);
+
+            if (!kpiIds.length) return;
+
+            try {
+                const url = new URL(`{{ route('kpi.entries.existing') }}`, window.location.origin);
+                url.searchParams.set('date', entryDate);
+                url.searchParams.set('department_id', departmentId);
+                kpiIds.forEach((id) => url.searchParams.append('kpi_definition_ids[]', String(id)));
+
+                const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) return;
+                const json = await res.json();
+                const data = json?.data || {};
+                const computed = json?.computed || {};
+                const source = json?.source || {};
+
+                cards.forEach((card) => {
+                    const id = parseInt(card.dataset.kpiId, 10);
+                    setCardExistingEntry(card, data[id] || null);
+                });
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        async function loadAkumulasiForAllCards() {
+            const container = document.getElementById('kpi-batch-container');
+            if (!container) return;
+
+            const entryDate = document.getElementById('entry_date')?.value;
+            const departmentId = getDepartmentId();
+            if (!entryDate || !departmentId) return;
+
+            const kpiIds = Array.from(container.querySelectorAll('[data-kpi-id]'))
+                .map((card) => parseInt(card.dataset.kpiId, 10))
+                .filter((id) => Number.isFinite(id) && id > 0);
+
+            if (!kpiIds.length) return;
+
+            try {
+                const url = new URL(`{{ route('kpi.entries.akumulasi') }}`, window.location.origin);
+                url.searchParams.set('date', entryDate);
+                url.searchParams.set('department_id', departmentId);
+                url.searchParams.set('kpi_definition_ids', kpiIds.join(','));
+
+                const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                const json = await res.json();
+                const data = json?.data || {};
+
+                container.querySelectorAll('[data-akumulasi]').forEach((el) => {
+                    const kpiId = parseInt(el.dataset.kpiId, 10);
+                    const fieldKey = el.dataset.fieldKey;
+                    const val = data?.[kpiId]?.[fieldKey];
+                    el.textContent = formatAkumulasiNumber(val);
+                });
+            } catch (e) {
+                // keep '-' on error
             }
         }
 
@@ -703,12 +1219,22 @@
             container.querySelectorAll('[data-kpi-id]').forEach((card) => {
                 applyActualMode(card);
             });
+            loadExistingEntriesForAllCards();
             loadYearlyTargetsForAllCards();
+            loadAkumulasiForAllCards();
+            loadMnPrefillForAllCards();
         });
 
         // Re-load yearly targets when date changes.
         document.getElementById('entry_date')?.addEventListener('change', () => {
+            loadExistingEntriesForAllCards();
             loadYearlyTargetsForAllCards();
+            loadAkumulasiForAllCards();
+            loadMnPrefillForAllCards();
+        });
+
+        document.getElementById('mn_working_hours')?.addEventListener('input', () => {
+            loadMnPrefillForAllCards();
         });
 
         // Mark target as manually edited so we don't overwrite it.
@@ -718,6 +1244,130 @@
                 target.dataset.autofilled = '0';
             }
         });
+
+        // Mark actual as manually edited (MN prefill) so we don't overwrite it.
+        document.addEventListener('input', function(e) {
+            const el = e.target;
+            if (el && el.matches('[data-actual-input]')) {
+                el.dataset.prefilled = '0';
+            }
+        });
+
+        function isMaintenanceDepartment() {
+            const container = document.getElementById('kpi-batch-container');
+            return container && (container.dataset.departmentCode || '').toUpperCase() === 'MN';
+        }
+
+        function setMnPrefillStatus(text, kind = 'muted') {
+            const el = document.getElementById('mn-prefill-status');
+            if (!el) return;
+            el.textContent = text;
+            if (kind === 'success') el.className = 'mt-2 text-xs text-green-600 dark:text-green-400';
+            else if (kind === 'warning') el.className = 'mt-2 text-xs text-yellow-600 dark:text-yellow-400';
+            else if (kind === 'error') el.className = 'mt-2 text-xs text-red-600 dark:text-red-400';
+            else el.className = 'mt-2 text-xs text-gray-500 dark:text-gray-400';
+        }
+
+        async function loadMnPrefillForAllCards() {
+            if (!isMaintenanceDepartment()) return;
+
+            const container = document.getElementById('kpi-batch-container');
+            if (!container) return;
+
+            const entryDate = document.getElementById('entry_date')?.value;
+            const departmentId = getDepartmentId();
+            const workingHoursVal = document.getElementById('mn_working_hours')?.value;
+            const workingHours = parseFloat(workingHoursVal);
+
+            if (!entryDate || !departmentId) return;
+
+            if (!Number.isFinite(workingHours) || workingHours <= 0) {
+                setMnPrefillStatus('Enter working time to prefill actuals.', 'warning');
+                return;
+            }
+
+            const cards = Array.from(container.querySelectorAll('[data-kpi-id]'));
+            const kpiIds = cards
+                .map((card) => parseInt(card.dataset.kpiId, 10))
+                .filter((id) => Number.isFinite(id) && id > 0);
+
+            if (!kpiIds.length) return;
+
+            setMnPrefillStatus('(prefill loading...)', 'muted');
+
+            try {
+                const url = new URL(`{{ route('kpi.entries.mn-prefill') }}`, window.location.origin);
+                url.searchParams.set('date', entryDate);
+                url.searchParams.set('department_id', departmentId);
+                url.searchParams.set('working_hours', String(workingHours));
+                kpiIds.forEach((id) => url.searchParams.append('kpi_definition_ids[]', String(id)));
+
+                const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+                const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+                if (!res.ok) {
+                    setMnPrefillStatus('Prefill failed (API error).', 'error');
+                    return;
+                }
+
+                if (!contentType.includes('application/json')) {
+                    setMnPrefillStatus('Prefill failed (unexpected response).', 'error');
+                    return;
+                }
+
+                let json;
+                try {
+                    json = await res.json();
+                } catch (err) {
+                    setMnPrefillStatus('Prefill failed (invalid JSON).', 'error');
+                    return;
+                }
+
+                const data = json?.data || {};
+                const computed = json?.computed || {};
+                const source = json?.source || {};
+
+                cards.forEach((card) => {
+                    const id = parseInt(card.dataset.kpiId, 10);
+                    const actualVal = data?.[id]?.actual;
+                    if (actualVal === null || actualVal === undefined) return;
+
+                    const actualInput = card.querySelector('[data-actual-input]');
+                    if (!actualInput) return;
+
+                    const shouldAutofill = (!actualInput.value || actualInput.dataset.prefilled === '1');
+                    if (!shouldAutofill) return;
+
+                    const num = parseFloat(actualVal);
+                    actualInput.value = Number.isFinite(num) ? num.toFixed(2) : '';
+                    actualInput.dataset.prefilled = '1';
+                });
+
+                const dt = Number.isFinite(parseFloat(computed?.downtime_pct)) ? parseFloat(computed.downtime_pct).toFixed(2) : null;
+                const mttr = Number.isFinite(parseFloat(computed?.mttr)) ? parseFloat(computed.mttr).toFixed(2) : null;
+                const mtbf = Number.isFinite(parseFloat(computed?.mtbf)) ? parseFloat(computed.mtbf).toFixed(2) : null;
+
+                const wh = Number.isFinite(parseFloat(source?.working_hours)) ? parseFloat(source.working_hours).toFixed(2) : null;
+                const dtH = Number.isFinite(parseFloat(source?.total_downtime_hour)) ? parseFloat(source.total_downtime_hour).toFixed(2) : null;
+                const fin = Number.isFinite(parseFloat(source?.total_tickets)) ? parseFloat(source.total_tickets).toFixed(0) : null;
+
+                const details = [
+                    (wh !== null || dtH !== null || fin !== null)
+                        ? `WH=${wh ?? '-'}h | DT_H=${dtH ?? '-'}h | FIN=${fin ?? '-'}`
+                        : null,
+                    dt !== null ? `DT=${dt}%` : null,
+                    mttr !== null ? `MTTR=${mttr}` : null,
+                    mtbf !== null ? `MTBF=${mtbf}` : null,
+                ].filter(Boolean).join(' | ');
+
+                const used = source?.payload_keys_used;
+                const usedMsg = used ? ` (keys: downtime=${used.downtime ?? '-'}, tickets=${used.tickets ?? '-'})` : '';
+
+                setMnPrefillStatus(details ? `Prefill applied. ${details}${usedMsg}` : `Prefill applied.${usedMsg}`, 'success');
+            } catch (e) {
+                setMnPrefillStatus('Prefill failed (network).', 'error');
+            }
+        }
 
         // Aggregated actual recompute on dynamic field input.
         document.addEventListener('input', function(e) {

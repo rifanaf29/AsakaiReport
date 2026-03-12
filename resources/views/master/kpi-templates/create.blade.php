@@ -100,6 +100,7 @@
                                 <option value="avg" {{ old('actual_aggregation') === 'avg' ? 'selected' : '' }}>Average</option>
                                 <option value="min" {{ old('actual_aggregation') === 'min' ? 'selected' : '' }}>Minimum</option>
                                 <option value="max" {{ old('actual_aggregation') === 'max' ? 'selected' : '' }}>Maximum</option>
+                                <option value="formula" {{ old('actual_aggregation') === 'formula' ? 'selected' : '' }}>Formula</option>
                             </select>
 
                             @error('actual_aggregation')
@@ -107,7 +108,7 @@
                             @enderror
                         </div>
 
-                        <div>
+                        <div id="actual-field-keys-wrapper">
                             <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                                 Source Fields
                             </label>
@@ -122,6 +123,28 @@
                                 Please select at least one source field.
                             </p>
                             @error('actual_field_keys')
+                                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div id="actual-formula-wrapper" class="hidden mt-4">
+                            <label for="actual_formula" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Actual Formula
+                            </label>
+                            <input
+                                type="text"
+                                name="actual_formula"
+                                id="actual_formula"
+                                value="{{ old('actual_formula') }}"
+                                class="form-input w-full text-sm rounded border-gray-300 dark:border-gray-600 dark:bg-gray-800 @error('actual_formula') border-red-500 @enderror"
+                                placeholder="e.g., =pd1/pd2*1000000"
+                            >
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Use field keys (e.g., pd1, pd2). Supported: +, -, *, /, parentheses.</p>
+
+                            <p id="actual-formula-client-error" class="mt-1 hidden text-sm text-red-500">
+                                Please enter an actual formula.
+                            </p>
+                            @error('actual_formula')
                                 <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
                             @enderror
                         </div>
@@ -234,6 +257,7 @@
                                 <option value="text">Text</option>
                                 <option value="number">Number</option>
                                 <option value="decimal">Decimal</option>
+                                <option value="accounting">Accounting</option>
                                 <option value="date">Date</option>
                                 <option value="calculated">Calculated</option>
                             </select>
@@ -352,18 +376,51 @@
                 settings.classList.toggle('hidden', mode !== 'aggregated');
             }
 
+            toggleActualAggregationUI();
+
             validateActualAggregationSelection();
+        }
+
+        function toggleActualAggregationUI() {
+            const mode = document.querySelector('input[name="actual_mode"]:checked')?.value;
+            if (mode !== 'aggregated') return;
+
+            const aggregation = document.getElementById('actual_aggregation')?.value;
+            const fieldWrapper = document.getElementById('actual-field-keys-wrapper');
+            const formulaWrapper = document.getElementById('actual-formula-wrapper');
+
+            if (fieldWrapper) {
+                fieldWrapper.classList.toggle('hidden', aggregation === 'formula');
+            }
+            if (formulaWrapper) {
+                formulaWrapper.classList.toggle('hidden', aggregation !== 'formula');
+            }
         }
 
         function validateActualAggregationSelection() {
             const mode = document.querySelector('input[name="actual_mode"]:checked')?.value;
             const clientError = document.getElementById('actual-field-keys-client-error');
+            const formulaClientError = document.getElementById('actual-formula-client-error');
+
             if (!clientError) return true;
 
             if (mode !== 'aggregated') {
                 clientError.classList.add('hidden');
+                if (formulaClientError) formulaClientError.classList.add('hidden');
                 return true;
             }
+
+            const aggregation = document.getElementById('actual_aggregation')?.value;
+            if (aggregation === 'formula') {
+                clientError.classList.add('hidden');
+
+                const formulaInput = document.getElementById('actual_formula');
+                const ok = !!(formulaInput && formulaInput.value.trim().length > 0);
+                if (formulaClientError) formulaClientError.classList.toggle('hidden', ok);
+                return ok;
+            }
+
+            if (formulaClientError) formulaClientError.classList.add('hidden');
 
             const container = document.getElementById('actual-field-keys');
             const checkedCount = container
@@ -454,12 +511,29 @@
             toggleActualMode(selectedMode ? selectedMode.value : 'manual');
             updateActualFieldOptions();
 
+            toggleActualAggregationUI();
+
             const form = document.querySelector('form[action="{{ route('master.kpi-templates.store') }}"]');
             if (form) {
                 form.addEventListener('submit', function (event) {
                     if (!validateActualAggregationSelection()) {
                         event.preventDefault();
                     }
+                });
+            }
+
+            const actualAggregationSelect = document.getElementById('actual_aggregation');
+            if (actualAggregationSelect) {
+                actualAggregationSelect.addEventListener('change', function () {
+                    toggleActualAggregationUI();
+                    validateActualAggregationSelection();
+                });
+            }
+
+            const actualFormulaInput = document.getElementById('actual_formula');
+            if (actualFormulaInput) {
+                actualFormulaInput.addEventListener('input', function () {
+                    validateActualAggregationSelection();
                 });
             }
 

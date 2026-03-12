@@ -18,28 +18,46 @@
             @foreach($entry->template->fields as $field)
             <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    {{ $field->label }} @if($field->is_required)<span class="text-red-500">*</span>@endif
+                    @php
+                        $unitOverride = null;
+                        if ($entry->relationLoaded('kpiDefinition') && $entry->kpiDefinition && is_array($entry->kpiDefinition->field_units ?? null)) {
+                            $unitOverride = $entry->kpiDefinition->field_units[$field->field_key] ?? null;
+                        }
+                        $fieldUnit = $unitOverride ?: ($field->unit ?? null);
+                    @endphp
+                    {{ $field->label }}
+                    @if($fieldUnit)
+                        <span class="text-xs font-normal text-gray-500 dark:text-gray-400">({{ $fieldUnit }})</span>
+                    @endif
+                    @if($field->is_required)<span class="text-red-500">*</span>@endif
                 </label>
                 @php
                     $dynamicFields = is_array($entry->dynamic_fields) ? $entry->dynamic_fields : [];
                     $oldValue = old("dynamic_fields.{$field->field_key}");
                     $storedValue = $dynamicFields[$field->field_key] ?? null;
                     $fieldValue = $oldValue ?? $storedValue ?? $field->default_value ?? '';
+
+                    $isEditable = (bool) ($field->is_editable ?? true);
+                    if (($field->field_type ?? null) === 'calculated') {
+                        $isEditable = false;
+                    }
                 @endphp
                 @if($field->field_type === 'textarea')
                           <textarea name="dynamic_fields[{{ $field->field_key }}]" 
                               data-field-key="{{ $field->field_key }}"
                               rows="3"
                               @if($field->is_required) required @endif
-                              class="w-full px-4 py-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200">{{ $fieldValue }}</textarea>
+                              @if(!$isEditable) readonly @endif
+                              class="w-full px-4 py-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200 @if(!$isEditable) opacity-75 cursor-not-allowed @endif">{{ $fieldValue }}</textarea>
                 @else
-                    <input type="{{ $field->field_type }}" 
+                    <input type="{{ in_array($field->field_type, ['number','decimal','accounting'], true) ? 'number' : $field->field_type }}" 
                            name="dynamic_fields[{{ $field->field_key }}]"
                               data-field-key="{{ $field->field_key }}"
                            value="{{ $fieldValue }}"
-                           @if($field->field_type === 'number') step="0.01" @endif
+                           @if(in_array($field->field_type, ['number','decimal','accounting'], true)) step="0.01" @endif
                            @if($field->is_required) required @endif
-                           class="w-full px-4 py-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200">
+                           @if(!$isEditable) readonly @endif
+                           class="w-full px-4 py-3 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200 @if(!$isEditable) opacity-75 cursor-not-allowed @endif">
                 @endif
             </div>
             @endforeach

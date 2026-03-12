@@ -15,7 +15,7 @@
                                 {{ $selectedMonthLabel ?? '' }}{{ ($selectedMonthLabel ?? null) ? ' • ' : '' }}{{ $kpiChartMeta['template_title'] ?? 'All KPIs' }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
                             <select id="presentation-department" class="text-sm border-gray-200 rounded-md dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
                                 @foreach($departments as $dept)
                                     <option value="{{ $dept->id }}" {{ (int) ($selectedDepartmentId ?? 0) === (int) $dept->id ? 'selected' : '' }}>
@@ -30,10 +30,10 @@
                                 Prev
                             </button>
 
-                            <select id="presentation-kpi" class="text-sm border-gray-200 rounded-md dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+                            <select id="presentation-kpi" class="text-sm border-gray-200 rounded-md dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 w-72 max-w-[18rem] min-w-0 truncate">
                                 @foreach($kpis as $kpi)
                                     <option value="{{ $kpi->id }}" {{ (int) ($selectedKpiDefinitionId ?? 0) === (int) $kpi->id ? 'selected' : '' }}>
-                                        {{ $kpi->display_name ?: ($kpi->template?->code ?: 'KPI') }}
+                                        {{ \Illuminate\Support\Str::limit(($kpi->display_name ?: ($kpi->template?->code ?: 'KPI')), 60) }}
                                     </option>
                                 @endforeach
                             </select>
@@ -82,6 +82,7 @@
                         ]);
 
                         $kpiUnit = $kpiChartMeta['unit'] ?? null;
+                        $showMonthlyTotals = \Illuminate\Support\Str::startsWith((string) ($kpiChartMeta['template_code'] ?? ''), 'TPL_HR_WASTE_');
                         $formatKpiCell = function ($value) {
                             if ($value === null || $value === '') return '';
                             if (!is_numeric($value)) return '';
@@ -123,6 +124,9 @@
                                         @endphp
                                         <th class="p-2 whitespace-nowrap" style="{{ $dateHeaderCellStyle }}"><div class="font-semibold text-center {{ $dateHeaderTextClass }}">{{ $labelText }}</div></th>
                                     @endforeach
+                                    @if($showMonthlyTotals)
+                                        <th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Total</div></th>
+                                    @endif
                                 </tr>
                             </thead>
                             <tbody class="text-xs font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -171,6 +175,21 @@
                                                 @endif
                                             </td>
                                         @endforeach
+
+                                        @if($showMonthlyTotals)
+                                            @php
+                                                $isDynamicField = \Illuminate\Support\Str::startsWith($seriesName, 'field:');
+                                                $total = null;
+                                                if ($isDynamicField) {
+                                                    $total = collect($seriesValues)->filter(fn ($x) => is_numeric($x))->map(fn ($x) => (float) $x)->sum();
+                                                }
+                                            @endphp
+                                            <td class="p-2 whitespace-nowrap">
+                                                <div class="text-center text-gray-800 dark:text-gray-100">
+                                                    {{ $isDynamicField && $total !== null ? $formatKpiCell($total) : '' }}
+                                                </div>
+                                            </td>
+                                        @endif
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -277,14 +296,29 @@
                         const meta = payload?.kpiChartMeta || {};
                         const unit = meta.unit || null;
                         const operator = meta.target_operator || 'gte';
+                        const templateCode = String(meta.template_code || '');
+                        const isCncWaste = templateCode === 'TPL_PD_WASTE_CNC_BENDING';
+                        const showMonthlyTotals = !isCncWaste && templateCode.startsWith('TPL_HR_WASTE_');
+                        const showCncAverages = isCncWaste;
+                        const cncMoneyKeys = new Set(['d6', 'd7', 'd8', 'd9', 'd11', 'd12', 'd13', 'copq_material']);
 
                         const target = Array.isArray(chartData.target) ? chartData.target : [];
                         const actual = Array.isArray(chartData.actual) ? chartData.actual : [];
 
-                        const fieldKeys = Object.keys(chartData).filter((k) => k.startsWith('field:'));
-                        const seriesOrder = ['target', 'actual', ...fieldKeys, 'status'];
+                        const allFieldKeys = Object.keys(chartData).filter((k) => k.startsWith('field:'));
+                        const fieldKeys = allFieldKeys;
 
-                        const status = labels.map((_, i) => computeStatus(target[i], actual[i], operator));
+                        const cncSeriesOrder = (() => {
+                            const wanted = ['field:hasil_produksi', 'field:total_waste_kg', 'actual'];
+                            const rest = ['actual', ...fieldKeys].filter((k) => !wanted.includes(k));
+                            return [...wanted.filter((k) => k === 'actual' || fieldKeys.includes(k)), ...rest];
+                        })();
+
+                        const seriesOrder = isCncWaste
+                            ? cncSeriesOrder
+                            : ['target', 'actual', ...fieldKeys, 'status'];
+
+                        const status = isCncWaste ? [] : labels.map((_, i) => computeStatus(target[i], actual[i], operator));
 
                         const actualNumeric = actual
                             .map((v) => Number(v))
@@ -292,8 +326,8 @@
                         const actualSum = actualNumeric.reduce((acc, v) => acc + v, 0);
                         const actualAvg = actualNumeric.length ? (actualSum / actualNumeric.length) : null;
                         const targetValue = target.map((v) => Number(v)).find((v) => Number.isFinite(v));
-                        const okCount = status.filter((v) => v === 'OK').length;
-                        const ngCount = status.filter((v) => v === 'NG').length;
+                        const okCount = isCncWaste ? 0 : status.filter((v) => v === 'OK').length;
+                        const ngCount = isCncWaste ? 0 : status.filter((v) => v === 'NG').length;
                         const unitSuffix = unit ? (unit === '%' ? '%' : ` ${unit}`) : '';
 
                         const headerCells = labels
@@ -337,6 +371,8 @@
                                 let tdClass = '';
                                 let valueTextClass = 'text-gray-800 dark:text-gray-100';
 
+                                const isCncTotalRow = isCncWaste && (seriesName === 'field:total_waste_kg' || seriesName === 'actual');
+
                                 if (seriesName === 'target') {
                                     tdStyle = 'background-color: rgb(192, 0, 0);';
                                     valueTextClass = 'text-white';
@@ -349,6 +385,11 @@
                                         : (v === 'NG' ? 'bg-red-50 dark:bg-red-900/20' : '');
                                 }
 
+                                if (isCncTotalRow) {
+                                    tdStyle = 'background-color: rgb(192, 0, 0);';
+                                    valueTextClass = 'text-white';
+                                }
+
                                 if (seriesName === 'status') {
                                     const statusText = v === 'OK' ? '<div class="text-center text-xs text-green-700 dark:text-green-300">OK</div>'
                                         : (v === 'NG' ? '<div class="text-center text-xs text-red-700 dark:text-red-300">NG</div>'
@@ -357,14 +398,49 @@
                                 }
 
                                 const isDynamicField = seriesName.startsWith('field:');
-                                const displayValue = isDynamicField ? (v ?? '') : formatNumber(v);
+                                const displayValue = isDynamicField ? formatNumber(v) : formatNumber(v);
                                 return `<td class="p-2 whitespace-nowrap ${tdClass}" style="${tdStyle}"><div class="text-center ${valueTextClass}">${escapeHtml(displayValue)}</div></td>`;
                             }).join('');
 
+                            let avgCells = '';
+                            if (showCncAverages) {
+                                const nums = values.map((v) => Number(v)).filter((n) => Number.isFinite(n));
+                                const avg = nums.length ? (nums.reduce((a, n) => a + n, 0) / nums.length) : null;
+
+                                const isMoneyRow = seriesName.startsWith('field:') && cncMoneyKeys.has(seriesName.slice(6));
+                                const avgD = isMoneyRow
+                                    ? (nums.length ? nums.reduce((a, n) => a + n, 0) : null)
+                                    : avg;
+
+                                const isCncTotalRow = isCncWaste && (seriesName === 'field:total_waste_kg' || seriesName === 'actual');
+                                const tdStyle = isCncTotalRow ? 'background-color: rgb(192, 0, 0);' : '';
+                                const textClass = isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100';
+
+                                avgCells = `
+                                    <td class="p-2 whitespace-nowrap" style="${tdStyle}"><div class="text-center ${textClass}">${escapeHtml(avg === null ? '' : formatNumber(avg))}</div></td>
+                                    <td class="p-2 whitespace-nowrap" style="${tdStyle}"><div class="text-center ${textClass}">${escapeHtml(avgD === null ? '' : formatNumber(avgD))}</div></td>
+                                `;
+                            }
+
+                            let totalCell = '';
+                            if (showMonthlyTotals) {
+                                if (seriesName.startsWith('field:')) {
+                                    const sum = values
+                                        .map((v) => Number(v))
+                                        .filter((n) => Number.isFinite(n))
+                                        .reduce((acc, n) => acc + n, 0);
+                                    totalCell = `<td class="p-2 whitespace-nowrap"><div class="text-center text-gray-800 dark:text-gray-100">${escapeHtml(formatNumber(sum))}</div></td>`;
+                                } else {
+                                    totalCell = `<td class="p-2 whitespace-nowrap"><div class="text-center"></div></td>`;
+                                }
+                            }
+
                             return `
                                 <tr>
-                                    <td class="p-2"><div class="text-gray-800 dark:text-gray-100">${escapeHtml(label)}</div></td>
+                                    <td class="p-2" style="${(isCncWaste && (seriesName === 'field:total_waste_kg' || seriesName === 'actual')) ? 'background-color: rgb(192, 0, 0);' : ''}"><div class="${(isCncWaste && (seriesName === 'field:total_waste_kg' || seriesName === 'actual')) ? 'text-white' : 'text-gray-800 dark:text-gray-100'}">${escapeHtml(label)}</div></td>
                                     ${cells}
+                                    ${totalCell}
+                                    ${avgCells}
                                 </tr>
                             `;
                         };
@@ -381,15 +457,18 @@
                                     <tr>
                                         <th class="p-2"><div class="font-semibold text-left">Field</div></th>
                                         ${headerCells}
+                                        ${showMonthlyTotals ? '<th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Total</div></th>' : ''}
+                                        ${showCncAverages ? '<th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average</div></th><th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average/D</div></th>' : ''}
                                     </tr>
                                 </thead>
                                 <tbody class="text-xs font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
                                     ${bodyRows}
                                 </tbody>
+                                ${isCncWaste ? '' : `
                                 <tfoot class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
                                     <tr>
                                         <td class="p-2"><div class="font-semibold text-left">Summary</div></td>
-                                        <td class="p-2" colspan="${labels.length}">
+                                        <td class="p-2" colspan="${labels.length + (showMonthlyTotals ? 1 : 0)}">
                                             <div class="flex flex-wrap justify-end gap-x-4 gap-y-1">
                                                 <div><span class="font-semibold">Target</span>: ${escapeHtml(summaryTarget)}</div>
                                                 <div><span class="font-semibold">Actual Sum</span>: ${escapeHtml(summarySum)}</div>
@@ -400,6 +479,7 @@
                                         </td>
                                     </tr>
                                 </tfoot>
+                                `}
                             </table>
                         `;
                     };
@@ -437,23 +517,23 @@
                             elSubtitle.textContent = buildSubtitleText(payload.selectedMonthLabel, payload?.kpiChartMeta?.template_title, payload?.kpiChartMeta?.unit);
                         }
 
-                        if (window.kpiActualTargetChartInstance) {
+                        if (typeof window.renderKpiActualTargetChart === 'function') {
+                            window.renderKpiActualTargetChart();
+                        } else if (window.kpiActualTargetChartInstance) {
+                            // Fallback for older builds
                             const chart = window.kpiActualTargetChartInstance;
                             chart.data.labels = payload.kpiChartData.labels || [];
                             if (chart.data.datasets?.[0]) chart.data.datasets[0].data = payload.kpiChartData.actual || [];
                             if (chart.data.datasets?.[1]) chart.data.datasets[1].data = payload.kpiChartData.target || [];
-
-                            const unit = payload?.kpiChartMeta?.unit || null;
-                            chart.options.scales.y.title.display = Boolean(unit);
-                            chart.options.scales.y.title.text = unit ? `Unit: ${unit}` : '';
-                            const monthLabel = payload?.kpiChartMeta?.month_label;
-                            const title = payload?.kpiChartMeta?.template_title || 'All Templates';
-                            chart.options.plugins.title.text = monthLabel ? [title, monthLabel] : title;
-
                             chart.update();
                         }
 
                         elTableWrapper.innerHTML = buildKpiTableHtml(payload);
+
+                        const elCapaWrapper = document.getElementById('presentation-capa-table');
+                        if (elCapaWrapper && typeof payload?.capaTableHtml === 'string') {
+                            elCapaWrapper.innerHTML = payload.capaTableHtml;
+                        }
                     };
 
                     const fetchAndApply = async (options = {}) => {
@@ -515,163 +595,8 @@
                 <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60">
                     <h2 class="font-semibold text-gray-800 dark:text-gray-100">Recent CAPA Problems</h2>
                 </header>
-                <div class="p-3">
-                    <div class="overflow-x-auto">
-                        <table class="table-fixed w-full dark:text-gray-300">
-                            <thead class="text-xs uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50 rounded-xs">
-                                <tr>
-                                    <th class="p-2 w-28 sticky left-0 z-20 bg-gray-50 dark:bg-gray-700/50"><div class="font-semibold text-left">Date</div></th>
-                                    <th class="p-2 w-32 sticky left-28 z-20 bg-gray-50 dark:bg-gray-700/50"><div class="font-semibold text-left">Area</div></th>
-                                    <th class="p-2 w-80"><div class="font-semibold text-left">Problem</div></th>
-                                    <th class="p-2 w-80"><div class="font-semibold text-left">Root Cause</div></th>
-                                    <th class="p-2 w-80"><div class="font-semibold text-left">Action Plan</div></th>
-                                    <th class="p-2 w-28"><div class="font-semibold text-left">Due Date</div></th>
-                                    <th class="p-2 w-40"><div class="font-semibold text-left">Notes</div></th>
-                                    <th class="p-2 w-28"><div class="font-semibold text-left">PIC</div></th>
-                                    <th class="p-2 w-16"><div class="font-semibold text-center">Sev</div></th>
-                                    <th class="p-2 w-28"><div class="font-semibold text-center">Status</div></th>
-                                </tr>
-                            </thead>
-                            <tbody class="text-sm font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
-                                @php
-                                    $capaGroups = collect($capaProblems)->groupBy(function ($problem) {
-                                        $date = optional($problem->area)->capa_date ?? $problem->created_at;
-                                        return $date ? $date->format('Y-m-d') : '-';
-                                    });
-
-                                    $rowsForCause = function ($cause) {
-                                        $count = $cause?->actionPlans?->count() ?? 0;
-                                        return max(1, $count);
-                                    };
-                                    $rowsForProblem = function ($problem) use ($rowsForCause) {
-                                        $causes = $problem->causes ?? collect();
-                                        if ($causes->isEmpty()) return 1;
-                                        return (int) $causes->sum(fn ($c) => $rowsForCause($c));
-                                    };
-                                @endphp
-
-                                @forelse($capaGroups as $dateKey => $problemsForDate)
-                                    @php
-                                        $areasForDate = $problemsForDate->groupBy(fn ($p) => optional($p->area)->id ?? 'no-area');
-                                        $dateRowspan = (int) $areasForDate->sum(fn ($problemsInArea) => $problemsInArea->sum(fn ($p) => $rowsForProblem($p)));
-                                        $rowStripeIndex = 0;
-                                        $printedDate = false;
-                                    @endphp
-
-                                    @foreach($areasForDate as $areaId => $problemsInArea)
-                                        @php
-                                            $areaName = optional($problemsInArea->first()->area)->area_name ?? '-';
-                                            $areaRowspan = (int) $problemsInArea->sum(fn ($p) => $rowsForProblem($p));
-                                            $printedArea = false;
-                                        @endphp
-
-                                        @foreach($problemsInArea as $problem)
-                                            @php
-                                                $problemRowspan = (int) $rowsForProblem($problem);
-                                                $printedProblem = false;
-                                                $causes = ($problem->causes ?? collect())->sortBy('sort_order')->values();
-                                                if ($causes->isEmpty()) {
-                                                    $causes = collect([null]);
-                                                }
-                                            @endphp
-
-                                            @foreach($causes as $cause)
-                                                @php
-                                                    $actions = $cause ? ($cause->actionPlans ?? collect())->sortBy('due_date')->values() : collect();
-                                                    if ($actions->isEmpty()) {
-                                                        $actions = collect([null]);
-                                                    }
-                                                    $causeRowspan = $cause ? max(1, (int) (($cause->actionPlans ?? collect())->count())) : 1;
-                                                    $printedCause = false;
-                                                @endphp
-
-                                                @foreach($actions as $action)
-                                                    @php
-                                                        $rowStripeIndex++;
-                                                        $rowClass = ($rowStripeIndex % 2 === 0)
-                                                            ? 'bg-gray-50 dark:bg-gray-800/40'
-                                                            : 'bg-white dark:bg-gray-800';
-
-                                                        $actionStatus = $action?->status;
-                                                        $actionStatusLabel = $actionStatus === 'close'
-                                                            ? 'Closed'
-                                                            : ($actionStatus === 'progress' ? 'In Progress' : ($actionStatus === 'open' ? 'Open' : '-'));
-                                                    @endphp
-                                                    <tr class="{{ $rowClass }} hover:bg-gray-100 dark:hover:bg-gray-700/30">
-                                                        @if(!$printedDate)
-                                                            <td class="p-2 align-top bg-gray-50 dark:bg-gray-700/20 sticky left-0 z-10" rowspan="{{ $dateRowspan }}">
-                                                                <div class="font-semibold text-gray-800 dark:text-gray-100">{{ $dateKey }}</div>
-                                                            </td>
-                                                            @php($printedDate = true)
-                                                        @endif
-
-                                                        @if(!$printedArea)
-                                                            <td class="p-2 align-top bg-gray-50 dark:bg-gray-700/10 sticky left-28 z-10" rowspan="{{ $areaRowspan }}">
-                                                                <div class="font-semibold text-gray-800 dark:text-gray-100">{{ $areaName }}</div>
-                                                            </td>
-                                                            @php($printedArea = true)
-                                                        @endif
-
-                                                        @if(!$printedProblem)
-                                                            <td class="p-2 align-top" rowspan="{{ $problemRowspan }}">
-                                                                <a href="{{ route('capa.problems.show', $problem) }}" class="text-gray-800 dark:text-gray-100 hover:underline line-clamp-3">
-                                                                    {{ $problem->problem_description }}
-                                                                </a>
-                                                            </td>
-                                                            @php($printedProblem = true)
-                                                        @endif
-
-                                                        @if(!$printedCause)
-                                                            <td class="p-2 align-top" rowspan="{{ $causeRowspan }}">
-                                                                <div class="text-gray-800 dark:text-gray-100 line-clamp-3">{{ $cause?->cause_description ?: '-' }}</div>
-                                                            </td>
-                                                            @php($printedCause = true)
-                                                        @endif
-
-                                                        <td class="p-2">
-                                                            <div class="text-gray-800 dark:text-gray-100 line-clamp-3">{{ $action?->description ?: '-' }}</div>
-                                                        </td>
-                                                        <td class="p-2">
-                                                            <div class="text-gray-800 dark:text-gray-100">{{ $action?->due_date ? $action->due_date->format('Y-m-d') : '-' }}</div>
-                                                        </td>
-                                                        <td class="p-2">
-                                                            @php($actionNotes = $action?->keterangan ?? $action?->completion_notes)
-                                                            <div class="text-gray-800 dark:text-gray-100 line-clamp-3">{{ $actionNotes ?: '-' }}</div>
-                                                        </td>
-                                                        <td class="p-2">
-                                                            @php($picName = $action ? ($action->person_in_charge ?? optional($action->pic)->name) : null)
-                                                            <div class="text-gray-800 dark:text-gray-100">{{ $picName ?: '-' }}</div>
-                                                        </td>
-                                                        <td class="p-2">
-                                                            @php($severityKey = strtolower((string) ($problem->severity ?? '')))
-                                                            @php($severityLabel = $severityKey === 'high' ? 'H' : ($severityKey === 'medium' ? 'M' : ($severityKey === 'low' ? 'L' : ($severityKey ? strtoupper(substr($severityKey, 0, 1)) : '-'))))
-                                                            <div class="text-center">
-                                                                <span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
-                                                                    {{ $severityLabel }}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td class="p-2">
-                                                            <div class="text-center">
-                                                                <span class="px-2 py-0.5 rounded-full text-xs
-                                                                    {{ $actionStatusLabel === 'Closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : ($actionStatusLabel === 'In Progress' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : ($actionStatusLabel === 'Open' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200')) }}">
-                                                                    {{ $actionStatusLabel }}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                @endforeach
-                                            @endforeach
-                                        @endforeach
-                                    @endforeach
-                                @empty
-                                    <tr>
-                                        <td class="p-6 text-center text-gray-500 dark:text-gray-400" colspan="10">No CAPA problems found for the current filters.</td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
-                    </div>
+                <div id="presentation-capa-table">
+                    @include('pages.dashboard.partials.capa-problems-table', ['capaProblems' => $capaProblems])
                 </div>
             </div>
         </div>

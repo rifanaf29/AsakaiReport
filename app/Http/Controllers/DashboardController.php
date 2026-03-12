@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
+    private const TEMPLATE_CNC_WASTE = 'TPL_PD_WASTE_CNC_BENDING';
+    private const TEMPLATE_PD_MP_OT = 'TPL_PD_MP_OT';
     public function index(Request $request)
     {
         $data = $this->buildDashboardData($request);
@@ -44,6 +46,10 @@ class DashboardController extends Controller
             }
         }
 
+        $capaTableHtml = view('pages.dashboard.partials.capa-problems-table', [
+            'capaProblems' => $data['capaProblems'] ?? collect(),
+        ])->render();
+
         return response()->json([
             'selectedDepartmentId' => $data['selectedDepartmentId'] ?? null,
             'selectedKpiDefinitionId' => $data['selectedKpiDefinitionId'] ?? null,
@@ -53,6 +59,7 @@ class DashboardController extends Controller
             'kpiChartData' => $chartDataArray,
             'kpiChartMeta' => $data['kpiChartMeta'] ?? [],
             'kpiSeriesLabels' => $data['kpiSeriesLabels'] ?? [],
+            'capaTableHtml' => $capaTableHtml,
         ]);
     }
 
@@ -187,7 +194,14 @@ class DashboardController extends Controller
 
         $kpiSeriesLabels = [];
         if ($selectedTemplate) {
+            $isCncWaste = (string) ($selectedTemplate->code ?? '') === self::TEMPLATE_CNC_WASTE;
+            $isPdMpOt = (string) ($selectedTemplate->code ?? '') === self::TEMPLATE_PD_MP_OT;
             $templateFields = $selectedTemplate->fields()->orderBy('sort_order')->get();
+
+            // For CNC Waste dashboard, keep chart special rendering but include all fields for the table.
+            if ($isCncWaste) {
+                $kpiSeriesLabels['actual'] = 'Total Waste (%)';
+            }
 
             if ($templateFields->isNotEmpty()) {
                 $entriesForFields = KpiEntry::query()
@@ -217,7 +231,28 @@ class DashboardController extends Controller
                     while ($cursor->lte($monthEnd)) {
                         $dateKey = $cursor->toDateString();
                         $fieldsForDate = $dynamicByDate[$dateKey] ?? [];
-                        $fieldValues[] = $fieldsForDate[$field->field_key] ?? null;
+                        $value = $fieldsForDate[$field->field_key] ?? null;
+
+                        if ($isCncWaste && $field->field_key === 'total_waste_kg' && ($value === null || $value === '')) {
+                            $cb1 = (isset($fieldsForDate['cb1']) && is_numeric($fieldsForDate['cb1'])) ? (float) $fieldsForDate['cb1'] : 0.0;
+                            $cb2 = (isset($fieldsForDate['cb2']) && is_numeric($fieldsForDate['cb2'])) ? (float) $fieldsForDate['cb2'] : 0.0;
+                            $cb3 = (isset($fieldsForDate['cb3']) && is_numeric($fieldsForDate['cb3'])) ? (float) $fieldsForDate['cb3'] : 0.0;
+                            $cb4 = (isset($fieldsForDate['cb4']) && is_numeric($fieldsForDate['cb4'])) ? (float) $fieldsForDate['cb4'] : 0.0;
+                            $sum = $cb1 + $cb2 + $cb3 + $cb4;
+                            $value = $sum !== 0.0 ? $sum : null;
+                        }
+
+                        if ($isPdMpOt && $field->field_key === 'total_ot_charge' && ($value === null || $value === '')) {
+                            $c1 = (isset($fieldsForDate['ot_charge_pd1']) && is_numeric($fieldsForDate['ot_charge_pd1'])) ? (float) $fieldsForDate['ot_charge_pd1'] : 0.0;
+                            $c2 = (isset($fieldsForDate['ot_charge_pd2']) && is_numeric($fieldsForDate['ot_charge_pd2'])) ? (float) $fieldsForDate['ot_charge_pd2'] : 0.0;
+                            $c3 = (isset($fieldsForDate['ot_charge_pd3']) && is_numeric($fieldsForDate['ot_charge_pd3'])) ? (float) $fieldsForDate['ot_charge_pd3'] : 0.0;
+                            $c4 = (isset($fieldsForDate['ot_charge_pd4']) && is_numeric($fieldsForDate['ot_charge_pd4'])) ? (float) $fieldsForDate['ot_charge_pd4'] : 0.0;
+                            $c5 = (isset($fieldsForDate['ot_charge_pd5']) && is_numeric($fieldsForDate['ot_charge_pd5'])) ? (float) $fieldsForDate['ot_charge_pd5'] : 0.0;
+                            $sum = $c1 + $c2 + $c3 + $c4 + $c5;
+                            $value = $sum !== 0.0 ? $sum : null;
+                        }
+
+                        $fieldValues[] = $value;
                         $cursor->addDay();
                     }
 
@@ -245,6 +280,7 @@ class DashboardController extends Controller
 
         $kpiChartMeta = [
             'template_title' => $kpiTitle,
+            'template_code' => $selectedTemplate?->code,
             'unit' => $targetUnit,
             'target_operator' => $targetOperator,
             'month_label' => $selectedMonthLabel,

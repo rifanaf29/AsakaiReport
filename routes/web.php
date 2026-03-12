@@ -60,6 +60,9 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
     // KPI Entry Routes
     Route::prefix('kpi')->name('kpi.')->group(function () {
+        Route::get('entries/akumulasi', [KpiEntryController::class, 'akumulasi'])->name('entries.akumulasi');
+        Route::get('entries/mn-prefill', [KpiEntryController::class, 'mnPrefill'])->name('entries.mn-prefill');
+        Route::get('entries/existing', [KpiEntryController::class, 'existing'])->name('entries.existing');
         Route::resource('entries', KpiEntryController::class);
     });
 

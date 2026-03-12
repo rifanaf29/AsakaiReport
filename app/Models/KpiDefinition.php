@@ -24,11 +24,13 @@ class KpiDefinition extends Model
         'display_name',
         'is_active',
         'sort_order',
+        'field_units',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'sort_order' => 'integer',
+        'field_units' => 'array',
     ];
 
     public function template(): BelongsTo

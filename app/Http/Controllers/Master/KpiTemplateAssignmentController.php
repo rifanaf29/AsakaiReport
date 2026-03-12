@@ -24,9 +24,34 @@ class KpiTemplateAssignmentController extends Controller
         $selectedDepartmentId = (int) ($request->input('department') ?? ($departments->first()->id ?? 0));
 
         $templates = KpiTemplate::active()
+            ->with([
+                'fields' => function ($q) {
+                    $q->orderBy('sort_order');
+                },
+            ])
             ->withCount('fields')
             ->orderBy('code')
             ->get();
+
+        $templatesPayload = $templates->map(function ($t) {
+            return [
+                'id' => (int) $t->id,
+                'code' => $t->code,
+                'fields_count' => (int) ($t->fields_count ?? 0),
+                'fields' => $t->fields
+                    ? $t->fields
+                        ->where('field_type', '!=', 'calculated')
+                        ->values()
+                        ->map(fn ($f) => [
+                            'field_key' => $f->field_key,
+                            'field_name' => $f->field_name,
+                            'unit' => $f->unit,
+                            'field_type' => $f->field_type,
+                        ])
+                        ->all()
+                    : [],
+            ];
+        })->values();
 
         $kpis = KpiDefinition::query()
             ->where('department_id', $selectedDepartmentId)
@@ -35,7 +60,7 @@ class KpiTemplateAssignmentController extends Controller
             ->orderBy('id')
             ->get();
 
-        return view('master.kpi-templates.assignments', compact('templates', 'kpis', 'departments', 'selectedDepartmentId'));
+        return view('master.kpi-templates.assignments', compact('templates', 'templatesPayload', 'kpis', 'departments', 'selectedDepartmentId'));
     }
 
     /**
@@ -53,6 +78,8 @@ class KpiTemplateAssignmentController extends Controller
             'kpis.*.display_name' => 'required|string|max:150',
             'kpis.*.is_active' => 'nullable|boolean',
             'kpis.*.sort_order' => 'nullable|integer|min:0|max:1000000',
+            'kpis.*.field_units' => 'nullable|array',
+            'kpis.*.field_units.*' => 'nullable|string|max:20',
         ]);
 
         $departmentId = (int) $validated['department_id'];
@@ -73,12 +100,24 @@ class KpiTemplateAssignmentController extends Controller
                 foreach ($kpisInput as $row) {
                     $id = isset($row['id']) ? (int) $row['id'] : null;
 
+                    $fieldUnits = [];
+                    if (!empty($row['field_units']) && is_array($row['field_units'])) {
+                        foreach ($row['field_units'] as $key => $unit) {
+                            $key = trim((string) $key);
+                            if ($key === '') continue;
+                            $unit = trim((string) $unit);
+                            if ($unit === '') continue;
+                            $fieldUnits[$key] = $unit;
+                        }
+                    }
+
                     $payload = [
                         'department_id' => $department->id,
                         'kpi_template_id' => (int) $row['kpi_template_id'],
                         'display_name' => $row['display_name'],
                         'is_active' => !empty($row['is_active']),
                         'sort_order' => isset($row['sort_order']) && $row['sort_order'] !== '' ? (int) $row['sort_order'] : null,
+                        'field_units' => !empty($fieldUnits) ? $fieldUnits : null,
                     ];
 
                     if ($id && in_array($id, $existingIds, true)) {

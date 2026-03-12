@@ -7,6 +7,7 @@ use App\Models\KpiTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class KpiTemplateController extends Controller
 {
@@ -55,24 +56,45 @@ class KpiTemplateController extends Controller
     {
         Gate::authorize('create kpi templates');
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'code' => 'required|string|max:50|unique:kpi_templates,code',
             'description' => 'nullable|string',
             'actual_mode' => 'required|in:manual,aggregated',
-            'actual_aggregation' => 'required_if:actual_mode,aggregated|nullable|in:sum,avg,min,max',
-            'actual_field_keys' => 'required_if:actual_mode,aggregated|nullable|array',
+            'actual_aggregation' => 'required_if:actual_mode,aggregated|nullable|in:sum,avg,min,max,formula',
+            'actual_field_keys' => 'nullable|array',
             'actual_field_keys.*' => 'string|max:50',
+            'actual_formula' => 'nullable|string',
             'is_active' => 'boolean',
             'fields' => 'nullable|array',
             'fields.*.field_name' => 'required|string|max:100',
             'fields.*.field_key' => 'required|string|max:50',
-            'fields.*.field_type' => 'required|in:text,number,decimal,date,calculated',
+            'fields.*.field_type' => 'required|in:text,number,decimal,accounting,date,calculated',
             'fields.*.is_required' => 'boolean',
             'fields.*.is_editable' => 'boolean',
             'fields.*.calculation_formula' => 'nullable|string',
             'fields.*.unit' => 'nullable|string|max:20',
             'fields.*.sort_order' => 'nullable|integer',
         ]);
+
+        $validator->after(function ($validator) use ($request) {
+            $mode = $request->input('actual_mode');
+            if ($mode !== 'aggregated') return;
+
+            $aggregation = $request->input('actual_aggregation');
+            if ($aggregation === 'formula') {
+                if (!trim((string) $request->input('actual_formula'))) {
+                    $validator->errors()->add('actual_formula', 'Actual formula is required when aggregation is set to Formula.');
+                }
+                return;
+            }
+
+            $keys = $request->input('actual_field_keys');
+            if (!is_array($keys) || count($keys) < 1) {
+                $validator->errors()->add('actual_field_keys', 'Please select at least one source field.');
+            }
+        });
+
+        $validated = $validator->validate();
 
         DB::transaction(function () use ($validated, $request) {
             $template = KpiTemplate::create([
@@ -81,7 +103,8 @@ class KpiTemplateController extends Controller
                 'description' => $validated['description'] ?? null,
                 'actual_mode' => $validated['actual_mode'],
                 'actual_aggregation' => $validated['actual_aggregation'] ?? null,
-                'actual_field_keys' => $validated['actual_field_keys'] ?? null,
+                'actual_field_keys' => ($validated['actual_aggregation'] ?? null) === 'formula' ? null : ($validated['actual_field_keys'] ?? null),
+                'actual_formula' => ($validated['actual_aggregation'] ?? null) === 'formula' ? ($validated['actual_formula'] ?? null) : null,
                 'is_active' => $request->has('is_active'),
             ]);
 
@@ -141,24 +164,45 @@ class KpiTemplateController extends Controller
     {
         Gate::authorize('edit kpi templates');
 
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'code' => 'required|string|max:50|unique:kpi_templates,code,' . $kpiTemplate->id,
             'description' => 'nullable|string',
             'actual_mode' => 'required|in:manual,aggregated',
-            'actual_aggregation' => 'required_if:actual_mode,aggregated|nullable|in:sum,avg,min,max',
-            'actual_field_keys' => 'required_if:actual_mode,aggregated|nullable|array',
+            'actual_aggregation' => 'required_if:actual_mode,aggregated|nullable|in:sum,avg,min,max,formula',
+            'actual_field_keys' => 'nullable|array',
             'actual_field_keys.*' => 'string|max:50',
+            'actual_formula' => 'nullable|string',
             'is_active' => 'boolean',
             'fields' => 'nullable|array',
             'fields.*.field_name' => 'required|string|max:100',
             'fields.*.field_key' => 'required|string|max:50',
-            'fields.*.field_type' => 'required|in:text,number,decimal,date,calculated',
+            'fields.*.field_type' => 'required|in:text,number,decimal,accounting,date,calculated',
             'fields.*.is_required' => 'boolean',
             'fields.*.is_editable' => 'boolean',
             'fields.*.calculation_formula' => 'nullable|string',
             'fields.*.unit' => 'nullable|string|max:20',
             'fields.*.sort_order' => 'nullable|integer',
         ]);
+
+        $validator->after(function ($validator) use ($request) {
+            $mode = $request->input('actual_mode');
+            if ($mode !== 'aggregated') return;
+
+            $aggregation = $request->input('actual_aggregation');
+            if ($aggregation === 'formula') {
+                if (!trim((string) $request->input('actual_formula'))) {
+                    $validator->errors()->add('actual_formula', 'Actual formula is required when aggregation is set to Formula.');
+                }
+                return;
+            }
+
+            $keys = $request->input('actual_field_keys');
+            if (!is_array($keys) || count($keys) < 1) {
+                $validator->errors()->add('actual_field_keys', 'Please select at least one source field.');
+            }
+        });
+
+        $validated = $validator->validate();
 
         DB::transaction(function () use ($validated, $request, $kpiTemplate) {
             $kpiTemplate->update([
@@ -167,7 +211,8 @@ class KpiTemplateController extends Controller
                 'description' => $validated['description'] ?? null,
                 'actual_mode' => $validated['actual_mode'],
                 'actual_aggregation' => $validated['actual_aggregation'] ?? null,
-                'actual_field_keys' => $validated['actual_field_keys'] ?? null,
+                'actual_field_keys' => ($validated['actual_aggregation'] ?? null) === 'formula' ? null : ($validated['actual_field_keys'] ?? null),
+                'actual_formula' => ($validated['actual_aggregation'] ?? null) === 'formula' ? ($validated['actual_formula'] ?? null) : null,
                 'is_active' => $request->has('is_active'),
             ]);
 

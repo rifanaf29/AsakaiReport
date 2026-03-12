@@ -61,6 +61,7 @@
                             <tr>
                                 <th class="px-4 py-3 text-left">KPI Name</th>
                                 <th class="px-4 py-3 text-left">Template</th>
+                                <th class="px-4 py-3 text-left">Field Units</th>
                                 <th class="px-4 py-3 text-center">Active</th>
                                 <th class="px-4 py-3 text-center">Sort</th>
                                 <th class="px-4 py-3 text-right">Actions</th>
@@ -68,7 +69,7 @@
                         </thead>
                         <tbody id="kpi-rows" class="text-sm divide-y divide-gray-200 dark:divide-gray-700">
                             @forelse($kpis as $idx => $kpi)
-                                <tr>
+                                <tr data-kpi-row data-idx="{{ $idx }}">
                                     <td class="px-4 py-3">
                                         <input type="hidden" name="kpis[{{ $idx }}][id]" value="{{ $kpi->id }}">
                                         <input type="text"
@@ -78,13 +79,27 @@
                                                placeholder="e.g., Scrap Rate">
                                     </td>
                                     <td class="px-4 py-3">
-                                        <select name="kpis[{{ $idx }}][kpi_template_id]" class="form-select w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                                        <select name="kpis[{{ $idx }}][kpi_template_id]" class="form-select w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900" data-template-select>
                                             @foreach($templates as $template)
                                                 <option value="{{ $template->id }}" {{ (string) old('kpis.' . $idx . '.kpi_template_id', $kpi->kpi_template_id) === (string) $template->id ? 'selected' : '' }}>
                                                     {{ $template->code }} ({{ $template->fields_count ?? 0 }} fields)
                                                 </option>
                                             @endforeach
                                         </select>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <button type="button" class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400" data-toggle-units>
+                                            Edit units
+                                        </button>
+                                        <div class="mt-2 hidden" data-units-panel>
+                                            <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-3" data-units-container></div>
+                                            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Leave blank to use the template default unit.</p>
+                                        </div>
+
+                                        @php
+                                            $existingUnits = old('kpis.' . $idx . '.field_units', $kpi->field_units ?? []);
+                                        @endphp
+                                        <input type="hidden" data-initial-field-units="{{ $idx }}" value='@json($existingUnits)'>
                                     </td>
                                     <td class="px-4 py-3 text-center">
                                         <input type="checkbox" name="kpis[{{ $idx }}][is_active]" value="1" class="form-checkbox rounded border-gray-300 dark:border-gray-700" {{ old('kpis.' . $idx . '.is_active', $kpi->is_active) ? 'checked' : '' }}>
@@ -99,7 +114,7 @@
                                 </tr>
                             @empty
                                 <tr id="kpi-empty">
-                                    <td colspan="5" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">No KPIs yet. Click “Add KPI”.</td>
+                                    <td colspan="6" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">No KPIs yet. Click “Add KPI”.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -118,9 +133,91 @@
     <script>
         let kpiRowIndex = {{ (int) ($kpis->count() ?? 0) }};
 
+        const templatesById = (() => {
+            const templates = @json($templatesPayload);
+
+            const map = {};
+            templates.forEach((t) => { map[String(t.id)] = t; });
+            return map;
+        })();
+
         function removeKpiRow(button) {
             const row = button.closest('tr');
             if (row) row.remove();
+        }
+
+        function getInitialUnitsForIdx(idx) {
+            const input = document.querySelector(`input[data-initial-field-units="${idx}"]`);
+            if (!input) return {};
+            try {
+                const parsed = JSON.parse(input.value || '{}');
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function collectCurrentUnitsForIdx(idx) {
+            const inputs = document.querySelectorAll(`input[name^="kpis[${idx}][field_units]"]`);
+            const map = {};
+            inputs.forEach((input) => {
+                const name = input.getAttribute('name') || '';
+                const match = name.match(/\[field_units\]\[([^\]]+)\]/);
+                if (!match) return;
+                const key = match[1];
+                const value = (input.value || '').trim();
+                if (value) map[key] = value;
+            });
+            return map;
+        }
+
+        function renderUnitsPanelForRow(row) {
+            const idx = row.dataset.idx;
+            const select = row.querySelector('[data-template-select]');
+            const panel = row.querySelector('[data-units-panel]');
+            const container = row.querySelector('[data-units-container]');
+            if (!select || !panel || !container) return;
+
+            const templateId = String(select.value || '');
+            const template = templatesById[templateId];
+            const fieldUnits = Object.assign({}, getInitialUnitsForIdx(idx), collectCurrentUnitsForIdx(idx));
+
+            container.innerHTML = '';
+            if (!template || !template.fields || template.fields.length === 0) {
+                container.innerHTML = '<div class="text-xs text-gray-500 dark:text-gray-400">Selected template has no additional fields.</div>';
+                return;
+            }
+
+            template.fields.forEach((f) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'grid grid-cols-12 gap-3 items-center mb-2 last:mb-0';
+
+                const label = document.createElement('div');
+                label.className = 'col-span-7 text-xs text-gray-700 dark:text-gray-200';
+                label.textContent = `${f.field_name} (${f.field_key})`;
+
+                const defaultUnit = document.createElement('div');
+                defaultUnit.className = 'col-span-2 text-[11px] text-gray-500 dark:text-gray-400';
+                defaultUnit.textContent = f.unit ? `default: ${f.unit}` : 'default: -';
+
+                const inputWrap = document.createElement('div');
+                inputWrap.className = 'col-span-3';
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.maxLength = 20;
+                input.className = 'form-input w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 text-xs';
+                input.name = `kpis[${idx}][field_units][${f.field_key}]`;
+                input.placeholder = 'override unit';
+                input.value = (fieldUnits && fieldUnits[f.field_key]) ? String(fieldUnits[f.field_key]) : '';
+
+                inputWrap.appendChild(input);
+
+                wrapper.appendChild(label);
+                wrapper.appendChild(defaultUnit);
+                wrapper.appendChild(inputWrap);
+                container.appendChild(wrapper);
+            });
         }
 
         function addKpiRow() {
@@ -130,6 +227,8 @@
 
             const idx = kpiRowIndex++;
             const tr = document.createElement('tr');
+            tr.setAttribute('data-kpi-row', '');
+            tr.setAttribute('data-idx', String(idx));
 
             tr.innerHTML = `
                 <td class="px-4 py-3">
@@ -140,9 +239,19 @@
                            placeholder="e.g., Scrap Rate">
                 </td>
                 <td class="px-4 py-3">
-                    <select name="kpis[${idx}][kpi_template_id]" class="form-select w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                    <select name="kpis[${idx}][kpi_template_id]" class="form-select w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900" data-template-select>
                         ${templateOptionsHtml()}
                     </select>
+                </td>
+                <td class="px-4 py-3">
+                    <button type="button" class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400" data-toggle-units>
+                        Edit units
+                    </button>
+                    <div class="mt-2 hidden" data-units-panel>
+                        <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-3" data-units-container></div>
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Leave blank to use the template default unit.</p>
+                    </div>
+                    <input type="hidden" data-initial-field-units="${idx}" value="{}">
                 </td>
                 <td class="px-4 py-3 text-center">
                     <input type="checkbox" name="kpis[${idx}][is_active]" value="1" class="form-checkbox rounded border-gray-300 dark:border-gray-700" checked>
@@ -156,11 +265,42 @@
             `;
 
             tbody.appendChild(tr);
+
+            renderUnitsPanelForRow(tr);
         }
 
         function templateOptionsHtml() {
-            const templates = @json($templates->map(fn($t) => ['id' => $t->id, 'code' => $t->code, 'fields' => $t->fields_count ?? 0]));
-            return templates.map(t => `<option value="${t.id}">${t.code} (${t.fields} fields)</option>`).join('');
+            const templates = @json($templatesPayload);
+            return templates.map(t => `<option value="${t.id}">${t.code} (${t.fields_count ?? 0} fields)</option>`).join('');
         }
+
+        document.addEventListener('click', function (event) {
+            const btn = event.target.closest('[data-toggle-units]');
+            if (!btn) return;
+            const row = btn.closest('[data-kpi-row]');
+            if (!row) return;
+            const panel = row.querySelector('[data-units-panel]');
+            if (!panel) return;
+
+            const nextHidden = panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', !nextHidden);
+            if (nextHidden) {
+                renderUnitsPanelForRow(row);
+            }
+        });
+
+        document.addEventListener('change', function (event) {
+            const select = event.target.closest('[data-template-select]');
+            if (!select) return;
+            const row = select.closest('[data-kpi-row]');
+            if (!row) return;
+            renderUnitsPanelForRow(row);
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('[data-kpi-row]').forEach((row) => {
+                renderUnitsPanelForRow(row);
+            });
+        });
     </script>
 </x-app-layout>
