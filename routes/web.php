@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\SSOController;
 
 // Master Data Controllers
 use App\Http\Controllers\Master\DepartmentController;
@@ -30,6 +31,8 @@ use App\Http\Controllers\CapaActionPlanController;
 */
 
 Route::redirect('/', 'login');
+
+Route::get('/sso/login', [SSOController::class, 'login'])->name('sso.login');
 
 Route::middleware(['auth:sanctum', 'verified'])->group(function () {
 
