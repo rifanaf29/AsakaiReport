@@ -33,7 +33,7 @@
                             <select id="presentation-kpi" class="text-sm border-gray-200 rounded-md dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 w-72 max-w-[18rem] min-w-0 truncate">
                                 @foreach($kpis as $kpi)
                                     <option value="{{ $kpi->id }}" {{ (int) ($selectedKpiDefinitionId ?? 0) === (int) $kpi->id ? 'selected' : '' }}>
-                                        {{ \Illuminate\Support\Str::limit(($kpi->display_name ?: ($kpi->template?->code ?: 'KPI')), 60) }}
+                                        {{ \Illuminate\Support\Str::limit($kpi->display_name ?: ($kpi->template?->code ?: 'KPI'), 60) }}
                                     </option>
                                 @endforeach
                             </select>

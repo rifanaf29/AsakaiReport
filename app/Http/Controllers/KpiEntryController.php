@@ -681,12 +681,6 @@ class KpiEntryController extends Controller
             }
         }
 
-        // Check if CAPA is required but not filled
-        if ($status === 'NG' && !$hasCapaData) {
-            return back()->withInput()->withErrors([
-                'capa' => 'CAPA is required when KPI status is NG. Please add at least one problem.'
-            ]);
-        }
 
         DB::beginTransaction();
         try {
@@ -973,11 +967,6 @@ class KpiEntryController extends Controller
                 (float) $targetValue,
                 $targetOperator
             );
-
-            if ($status === 'NG' && !$hasAnyCapa) {
-                $errors["entries.$kpiId.capa"] = 'CAPA is required when KPI status is NG. Please add at least one problem.';
-                continue;
-            }
 
             $entriesToCreate[$kpiId] = [
                 'kpi_definition_id' => $kpiId,
@@ -1310,12 +1299,6 @@ class KpiEntryController extends Controller
             }
         }
 
-        // Check if CAPA is required but not filled
-        if ($status === 'NG' && !$hasCapaData) {
-            return back()->withInput()->withErrors([
-                'capa' => 'CAPA is required when KPI status is NG. Please add at least one problem.'
-            ]);
-        }
 
         DB::transaction(function () use ($validated, $status, $entry, $hasCapaData, $user) {
             // Update KPI Entry

@@ -269,7 +269,7 @@
                                         <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
                                             <div class="mb-3">
                                                 <h3 class="text-base font-semibold text-gray-800 dark:text-gray-200">CAPA</h3>
-                                                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Fill if issues are identified or when status is NG</p>
+                                                <p class="text-sm mt-1 text-gray-600 dark:text-gray-400" data-capa-hint>Fill if issues are identified or when status is NG</p>
                                             </div>
 
                                             <div class="mb-4">
@@ -280,7 +280,7 @@
                                                     </svg>
                                                     Add CAPA Area
                                                 </button>
-                                                <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">CAPA is hidden until you add an area</span>
+                                                <span class="ml-2 text-xs" data-capa-status-label></span>
                                             </div>
 
                                             <div data-capa-areas-container class="space-y-4 hidden"></div>
@@ -359,6 +359,47 @@
             else if (kind === 'warning') el.className = 'text-xs text-yellow-600 dark:text-yellow-400';
             else if (kind === 'error') el.className = 'text-xs text-red-600 dark:text-red-400';
             else el.className = 'text-xs text-gray-500 dark:text-gray-400';
+        }
+
+        function computeCardStatus(card) {
+            const targetInput = card.querySelector('[data-target-input]');
+            const actualInput = card.querySelector('[data-actual-input]');
+            if (!targetInput || !actualInput) return null;
+            const target = parseFloat(targetInput.value);
+            const actual = parseFloat(actualInput.value);
+            if (!Number.isFinite(target) || !Number.isFinite(actual)) return null;
+            const operator = card.dataset.targetOperator || 'gte';
+            return operator === 'lte' ? (actual <= target ? 'OK' : 'NG') : (actual >= target ? 'OK' : 'NG');
+        }
+
+        function updateCapaRequirement(card) {
+            const status = computeCardStatus(card);
+            const isNg = status === 'NG';
+
+            const hint = card.querySelector('[data-capa-hint]');
+            const statusLabel = card.querySelector('[data-capa-status-label]');
+
+            if (hint) {
+                if (isNg) {
+                    hint.textContent = 'Status is NG — CAPA is required.';
+                    hint.className = 'text-sm mt-1 font-medium text-red-600 dark:text-red-400';
+                } else {
+                    hint.textContent = 'Fill if issues are identified or when status is NG';
+                    hint.className = 'text-sm mt-1 text-gray-600 dark:text-gray-400';
+                }
+            }
+
+            if (statusLabel) {
+                if (isNg) {
+                    statusLabel.textContent = 'At least one CAPA area is required';
+                    statusLabel.className = 'ml-2 text-xs font-medium text-red-600 dark:text-red-400';
+                } else {
+                    statusLabel.textContent = 'CAPA is optional for this status';
+                    statusLabel.className = 'ml-2 text-xs text-gray-500 dark:text-gray-400';
+                }
+            }
+
+            card.dataset.capaRequired = isNg ? '1' : '0';
         }
 
         function parseJson(value, fallback) {
@@ -674,6 +715,8 @@
 
                 updateKpiUnit(card, data?.target_unit ? data.target_unit : '%');
 
+                card.dataset.targetOperator = data?.target_operator || 'gte';
+
                 if (data?.has_target && data.target !== null && data.target !== undefined) {
                     const shouldAutofill = targetInput && (!targetInput.value || targetInput.dataset.autofilled === '1');
                     if (shouldAutofill) {
@@ -684,6 +727,8 @@
                 } else {
                     setTargetStatus(card, '(no yearly target set)', 'warning');
                 }
+
+                updateCapaRequirement(card);
             } catch (error) {
                 setTargetStatus(card, '(failed to load target)', 'error');
             }
@@ -1242,6 +1287,8 @@
             const target = e.target;
             if (target && target.matches('[data-target-input]')) {
                 target.dataset.autofilled = '0';
+                const card = target.closest('[data-kpi-id]');
+                if (card) updateCapaRequirement(card);
             }
         });
 
@@ -1250,6 +1297,8 @@
             const el = e.target;
             if (el && el.matches('[data-actual-input]')) {
                 el.dataset.prefilled = '0';
+                const card = el.closest('[data-kpi-id]');
+                if (card) updateCapaRequirement(card);
             }
         });
 
@@ -1433,7 +1482,7 @@
         });
 
         // Ensure selected area name is written into hidden input before submit.
-        document.getElementById('kpiEntryForm')?.addEventListener('submit', function() {
+        document.getElementById('kpiEntryForm')?.addEventListener('submit', function(e) {
             document.querySelectorAll('[data-area-select]').forEach((select) => {
                 const kpiId = select.dataset.kpiId;
                 const areaIndex = select.dataset.areaIndex;

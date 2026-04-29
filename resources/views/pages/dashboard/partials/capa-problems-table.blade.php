@@ -20,7 +20,7 @@
                     $capaGroups = collect($capaProblems ?? [])->groupBy(function ($problem) {
                         $date = optional($problem->area)->capa_date ?? $problem->created_at;
                         return $date ? $date->format('Y-m-d') : '-';
-                    });
+                    })->sortKeysDesc();
 
                     $rowsForCause = function ($cause) {
                         $count = $cause?->actionPlans?->count() ?? 0;

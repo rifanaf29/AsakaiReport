@@ -10,8 +10,7 @@
             <form method="GET" action="{{ route('dashboard') }}" class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end min-w-0">
                 <div class="sm:col-span-3 min-w-0">
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Department</label>
-                    <select name="department" class="form-select w-full min-w-0 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-                        <option value="">All Departments</option>
+                    <select id="dashboard-dept" name="department" class="form-select w-full min-w-0 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                         @foreach($departments as $dept)
                             <option value="{{ $dept->id }}" {{ (string)$selectedDepartmentId === (string)$dept->id ? 'selected' : '' }}>
                                 {{ $dept->name }}
@@ -27,15 +26,13 @@
 
                 <div class="sm:col-span-3 min-w-0">
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">KPI</label>
-                    <select name="kpi_definition_id" class="form-select w-full max-w-full min-w-0 truncate rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-                        <option value="">All KPIs</option>
+                    <select id="dashboard-kpi" name="kpi_definition_id" class="form-select w-full max-w-full min-w-0 truncate rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
                         @foreach($kpis as $kpi)
                             @php
                                 $kpiName = $kpi->display_name ?: ($kpi->template?->code ?: 'KPI');
-                                $tplCode = $kpi->template?->code;
                             @endphp
                             <option value="{{ $kpi->id }}" {{ (string)($selectedKpiDefinitionId ?? '') === (string)$kpi->id ? 'selected' : '' }}>
-                                {{ \Illuminate\Support\Str::limit($kpiName . ($tplCode ? ' ('.$tplCode.')' : ''), 60) }}
+                                {{ \Illuminate\Support\Str::limit($kpiName, 60) }}
                             </option>
                         @endforeach
                     </select>
@@ -47,6 +44,12 @@
                     <a href="{{ route('dashboard', array_merge(request()->query(), ['fullscreen' => 1])) }}" class="btn bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Fullscreen</a>
                 </div>
             </form>
+            <script>
+                document.getElementById('dashboard-dept').addEventListener('change', function () {
+                    document.getElementById('dashboard-kpi').value = '';
+                    this.closest('form').submit();
+                });
+            </script>
         </div>
 
         <div class="grid grid-cols-12 gap-6">
@@ -329,7 +332,7 @@
                                     $capaGroups = collect($capaProblems)->groupBy(function ($problem) {
                                         $date = optional($problem->area)->capa_date ?? $problem->created_at;
                                         return $date ? $date->format('Y-m-d') : '-';
-                                    });
+                                    })->sortKeysDesc();
 
                                     $rowsForCause = function ($cause) {
                                         $count = $cause?->actionPlans?->count() ?? 0;

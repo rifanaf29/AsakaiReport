@@ -65,8 +65,6 @@ class DashboardController extends Controller
 
     private function buildDashboardData(Request $request): array
     {
-        $user = auth()->user();
-
         $isPresentation = $request->boolean('fullscreen') || $request->expectsJson();
 
         $selectedDepartmentId = $request->input('department');
@@ -74,9 +72,9 @@ class DashboardController extends Controller
         $selectedTemplateId = $request->input('template'); // legacy (kept; KPI selection is preferred)
 
         // Dashboard is intentionally cross-department readable for all authenticated users.
-        $departments = Department::active()->orderBy('name')->get();
+        $departments = Department::active()->orderByRaw("FIELD(id, 4, 2, 3, 5, 7, 1, 8,6)")->get();
 
-        if ($isPresentation && $user->can_access_all_departments && !$selectedDepartmentId) {
+        if (!$selectedDepartmentId) {
             $selectedDepartmentId = optional($departments->first())->id;
         }
 
@@ -92,9 +90,9 @@ class DashboardController extends Controller
                 ->filter(fn ($kpi) => (bool) $kpi->template);
         }
 
-            if ($isPresentation && !$selectedKpiDefinitionId && $kpis->isNotEmpty()) {
-                $selectedKpiDefinitionId = (int) $kpis->first()->id;
-            }
+        if (!$selectedKpiDefinitionId && $kpis->isNotEmpty()) {
+            $selectedKpiDefinitionId = (int) $kpis->first()->id;
+        }
 
         $selectedKpiDefinition = null;
         if ($selectedKpiDefinitionId) {

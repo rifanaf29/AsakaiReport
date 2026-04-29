@@ -439,12 +439,12 @@ const kpiActualTargetChart = () => {
           text: getMonthLabel() ? [getMeta().template_title || 'All Templates', getMonthLabel()] : (getMeta().template_title || 'All Templates'),
           color: '#000000',
           font: {
-            size: 14,
-            weight: '600',
+            size: 20,
+            weight: '700',
           },
           padding: {
             top: 6,
-            bottom: 10,
+            bottom: 12,
           },
         },
         legend: {
