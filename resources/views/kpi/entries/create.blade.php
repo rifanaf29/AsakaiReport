@@ -83,9 +83,13 @@
                             <label for="entry_date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Entry Date <span class="text-red-500">*</span>
                             </label>
-                            <input type="date" id="entry_date" name="entry_date" required
-                                   value="{{ old('entry_date', date('Y-m-d')) }}"
-                                class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <input type="date" id="entry_date" name="entry_date" required
+                                       value="{{ old('entry_date', date('Y-m-d')) }}"
+                                       class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                <div id="entry_date_day"
+                                     class="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors"></div>
+                            </div>
                             @error('entry_date')
                                 <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                             @enderror
@@ -159,10 +163,10 @@
 
                                         <input type="hidden" name="entries[{{ $kpiId }}][kpi_definition_id]" value="{{ $kpiId }}">
 
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4" data-target-actual-grid>
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                    Target (<span data-unit-label>%</span>)
+                                                    Target <span data-unit-paren>(<span data-unit-label>%</span>)</span>
                                                 </label>
                                                 <div class="flex items-center">
                                                     <input type="number" step="0.01" name="entries[{{ $kpiId }}][target]"
@@ -175,7 +179,7 @@
 
                                             <div>
                                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                    Actual (<span data-unit-label>%</span>)
+                                                    Actual <span data-unit-paren>(<span data-unit-label>%</span>)</span>
                                                 </label>
                                                 <div class="flex items-center">
                                                     <input type="number" step="0.01" name="entries[{{ $kpiId }}][actual]"
@@ -191,7 +195,7 @@
                                             <div class="mb-4">
                                                 <h3 class="text-base font-semibold text-gray-700 dark:text-gray-300 mb-3">Additional Fields</h3>
                                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    @foreach($tpl->fields->where('field_type', '!=', 'calculated') as $field)
+                                                    @foreach($tpl->fields as $field)
                                                         @php
                                                             $fieldKey = $field->field_key;
                                                             $oldVal = old('entries.' . $kpiId . '.dynamic_fields.' . $fieldKey);
@@ -204,7 +208,11 @@
                                                                 @if($fieldUnit)
                                                                     <span class="text-xs font-normal text-gray-500 dark:text-gray-400">({{ $fieldUnit }})</span>
                                                                 @endif
-                                                                @if($field->is_required) <span class="text-red-500">*</span>@endif
+                                                                @if($field->field_type === 'calculated')
+                                                                    <span class="text-xs font-normal text-indigo-500 dark:text-indigo-400 ml-1">auto</span>
+                                                                @elseif($field->is_required)
+                                                                    <span class="text-red-500">*</span>
+                                                                @endif
                                                             </label>
                                                             @switch($field->field_type)
                                                                 @case('textarea')
@@ -221,6 +229,16 @@
                                                                            @if($field->is_required) required @endif
                                                                            class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                                                            data-dynamic-field data-field-key="{{ $fieldKey }}">
+                                                                    @break
+                                                                @case('calculated')
+                                                                    <input type="number" step="0.01"
+                                                                           name="entries[{{ $kpiId }}][dynamic_fields][{{ $fieldKey }}]"
+                                                                           value="{{ $oldVal }}"
+                                                                           readonly
+                                                                           class="w-full rounded-lg border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 cursor-not-allowed"
+                                                                           data-calc-field
+                                                                           data-field-key="{{ $fieldKey }}"
+                                                                           data-calc-formula="{{ $field->calculation_formula ?? '' }}">
                                                                     @break
                                                                 @case('number')
                                                                 @case('decimal')
@@ -363,6 +381,7 @@
         }
 
         function computeCardStatus(card) {
+            if (card.dataset.targetMode === 'display_only') return null;
             const targetInput = card.querySelector('[data-target-input]');
             const actualInput = card.querySelector('[data-actual-input]');
             if (!targetInput || !actualInput) return null;
@@ -374,6 +393,7 @@
         }
 
         function updateCapaRequirement(card) {
+            if (card.dataset.targetMode === 'display_only') return;
             const status = computeCardStatus(card);
             const isNg = status === 'NG';
 
@@ -431,10 +451,14 @@
             }
 
             if (targetMode === 'display_only') {
-                // input → .flex.items-center → column div (label + input wrapper)
-                const targetCol = card.querySelector('[data-target-input]')?.parentElement?.parentElement;
-                if (targetCol) targetCol.style.display = 'none';
+                // Hide entire Target + Actual grid row
+                const targetActualGrid = card.querySelector('[data-target-actual-grid]');
+                if (targetActualGrid) targetActualGrid.style.display = 'none';
 
+                // Hide target status text
+                setTargetStatus(card, '', 'muted');
+
+                // Update CAPA hint
                 const hint = card.querySelector('[data-capa-hint]');
                 if (hint) {
                     hint.textContent = 'Template ini hanya menampilkan data — tidak ada target atau status OK/NG';
@@ -512,6 +536,41 @@
             }
 
             actualInput.value = Number.isFinite(result) ? result.toFixed(2) : '';
+        }
+
+        function preprocessFormula(formula) {
+            return formula
+                .replace(/\bSUM\s*\(([^)]+)\)/gi, (_, args) => {
+                    const parts = args.split(',').map(s => s.trim()).filter(Boolean);
+                    return '(' + parts.join('+') + ')';
+                })
+                .replace(/\bAVG\s*\(([^)]+)\)/gi, (_, args) => {
+                    const parts = args.split(',').map(s => s.trim()).filter(Boolean);
+                    return '((' + parts.join('+') + ')/' + parts.length + ')';
+                });
+        }
+
+        function computeCalculatedFields(card) {
+            const kpiId = card.dataset.kpiId;
+            const dynamicMap = {};
+            card.querySelectorAll(`[name^="entries[${kpiId}][dynamic_fields]"]`).forEach((input) => {
+                if (input.hasAttribute('data-calc-field')) return;
+                const name = input.getAttribute('name') || '';
+                const match = name.match(/\[dynamic_fields\]\[([^\]]+)\]/);
+                if (!match) return;
+                const key = (match[1] || '').toLowerCase();
+                const num = parseFloat(input.value);
+                dynamicMap[key] = Number.isFinite(num) ? num : null;
+            });
+
+            card.querySelectorAll('[data-calc-field]').forEach((input) => {
+                const rawFormula = (input.dataset.calcFormula || '').trim();
+                if (!rawFormula) return;
+                let expr = rawFormula.startsWith('=') ? rawFormula.slice(1).trim() : rawFormula;
+                expr = preprocessFormula(expr);
+                const result = evaluateArithmeticExpression(expr, dynamicMap);
+                input.value = Number.isFinite(result) ? result.toFixed(2) : '';
+            });
         }
 
         function evaluateArithmeticExpression(expression, variables) {
@@ -710,6 +769,8 @@
         }
 
         async function loadYearlyTargetForCard(card) {
+            if (card.dataset.targetMode === 'display_only') return;
+
             const kpiDefinitionId = card.dataset.kpiId;
             const departmentId = getDepartmentId();
             const entryDate = document.getElementById('entry_date')?.value;
@@ -1277,9 +1338,12 @@
             const container = document.getElementById('kpi-batch-container');
             if (!container) return;
 
-            // Initialize units/targets and actual mode.
+            updateEntryDateDisplay();
+
+            // Initialize units/targets, actual mode, and calculated fields.
             container.querySelectorAll('[data-kpi-id]').forEach((card) => {
                 applyActualMode(card);
+                computeCalculatedFields(card);
             });
             loadExistingEntriesForAllCards();
             loadYearlyTargetsForAllCards();
@@ -1287,8 +1351,36 @@
             loadMnPrefillForAllCards();
         });
 
+        function updateEntryDateDisplay() {
+            const input = document.getElementById('entry_date');
+            const badge = document.getElementById('entry_date_day');
+            if (!input || !badge) return;
+
+            const val = input.value;
+            if (!val) { badge.textContent = ''; badge.className = 'hidden'; return; }
+
+            // Parse as local date (avoid UTC shift)
+            const [y, m, d] = val.split('-').map(Number);
+            const date = new Date(y, m - 1, d);
+            const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const dayName = days[date.getDay()];
+            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+
+            badge.textContent = `${dayName}, ${d} ${months[m - 1]} ${y}`;
+
+            if (isWeekend) {
+                badge.className = 'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300';
+                badge.title = 'Weekend — please verify this date is correct';
+            } else {
+                badge.className = 'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300';
+                badge.title = '';
+            }
+        }
+
         // Re-load yearly targets when date changes.
         document.getElementById('entry_date')?.addEventListener('change', () => {
+            updateEntryDateDisplay();
             loadExistingEntriesForAllCards();
             loadYearlyTargetsForAllCards();
             loadAkumulasiForAllCards();
@@ -1435,12 +1527,13 @@
             }
         }
 
-        // Aggregated actual recompute on dynamic field input.
+        // Aggregated actual and calculated fields recompute on dynamic field input.
         document.addEventListener('input', function(e) {
             const el = e.target;
             if (!el || !el.matches('[data-dynamic-field]')) return;
             const card = el.closest('[data-kpi-id]');
             if (!card) return;
+            computeCalculatedFields(card);
             computeAggregatedActual(card);
         });
 

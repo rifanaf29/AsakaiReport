@@ -164,12 +164,42 @@
                     @enderror
                 </div>
 
+                <!-- Target Mode -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Target Mode <span class="text-red-500">*</span>
+                    </label>
+                    <div class="space-y-2">
+                        <label class="flex items-start gap-2">
+                            <input type="radio" name="target_mode" value="with_target"
+                                   class="form-radio text-indigo-600 mt-0.5"
+                                   {{ old('target_mode', $kpiTemplate->target_mode ?? 'with_target') === 'with_target' ? 'checked' : '' }}>
+                            <div>
+                                <span class="text-sm text-gray-700 dark:text-gray-300">With Target</span>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">Compare actual vs target, show OK/NG status and enable CAPA</p>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-2">
+                            <input type="radio" name="target_mode" value="display_only"
+                                   class="form-radio text-indigo-600 mt-0.5"
+                                   {{ old('target_mode', $kpiTemplate->target_mode) === 'display_only' ? 'checked' : '' }}>
+                            <div>
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Display Only</span>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">No target comparison — only displays actual data without OK/NG status</p>
+                            </div>
+                        </label>
+                    </div>
+                    @error('target_mode')
+                        <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+                    @enderror
+                </div>
+
                 <!-- Active Status -->
                 <div class="mb-6">
                     <label class="flex items-center">
-                        <input 
-                            type="checkbox" 
-                            name="is_active" 
+                        <input
+                            type="checkbox"
+                            name="is_active"
                             value="1"
                             class="form-checkbox rounded border-gray-300 dark:border-gray-700 dark:bg-gray-900"
                             {{ old('is_active', $kpiTemplate->is_active) ? 'checked' : '' }}
