@@ -21,6 +21,7 @@ class KpiTemplate extends Model
         'actual_aggregation',
         'actual_field_keys',
         'actual_formula',
+        'target_mode',
         'is_active',
         'sort_order',
     ];

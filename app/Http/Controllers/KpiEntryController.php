@@ -581,12 +581,15 @@ class KpiEntryController extends Controller
         $actualRule = ($templateForRules && $templateForRules->actual_mode === 'aggregated')
             ? 'nullable|numeric'
             : 'required|numeric';
+        $targetRule = ($templateForRules && $templateForRules->target_mode === 'display_only')
+            ? 'nullable|numeric'
+            : 'required|numeric';
 
         $validated = $request->validate([
             'kpi_definition_id' => 'required|exists:kpi_template_departments,id',
             'department_id' => $user->can_access_all_departments ? 'required|exists:departments,id' : 'nullable',
             'entry_date' => 'required|date',
-            'target' => 'required|numeric',
+            'target' => $targetRule,
             'actual' => $actualRule,
             'notes' => 'nullable|string',
             'dynamic_fields' => 'nullable|array',
@@ -656,17 +659,22 @@ class KpiEntryController extends Controller
 
         // Auto-calculate status
         $targetYear = Carbon::parse($validated['entry_date'])->year;
-        $targetOperator = KpiMonthlyTarget::query()
-            ->where('kpi_definition_id', (int) $validated['kpi_definition_id'])
-            ->where('target_year', $targetYear)
-            ->where('target_month', 1)
-            ->value('target_operator') ?: 'gte';
+        if ($template->target_mode === 'display_only') {
+            $status = null;
+            $validated['target'] = null;
+        } else {
+            $targetOperator = KpiMonthlyTarget::query()
+                ->where('kpi_definition_id', (int) $validated['kpi_definition_id'])
+                ->where('target_year', $targetYear)
+                ->where('target_month', 1)
+                ->value('target_operator') ?: 'gte';
 
-        $status = $this->computeKpiStatus(
-            (float) $validated['actual'],
-            (float) $validated['target'],
-            $targetOperator
-        );
+            $status = $this->computeKpiStatus(
+                (float) $validated['actual'],
+                (float) $validated['target'],
+                $targetOperator
+            );
+        }
 
         // Check if CAPA data exists
         $hasCapaData = false;
@@ -923,18 +931,21 @@ class KpiEntryController extends Controller
 
             $dynamicFields = $this->enrichDynamicFieldsForTemplate($template, $dynamicFields);
 
-            // Resolve target: use submitted value, otherwise fall back to yearly target.
-            $targetValue = $payload['target'] ?? null;
-            if ($targetValue === '' || $targetValue === null) {
-                $targetValue = KpiMonthlyTarget::query()
-                    ->where('kpi_definition_id', $kpiId)
-                    ->where('target_year', $targetYear)
-                    ->where('target_month', 1)
-                    ->value('target');
-            }
-            if ($targetValue === null || $targetValue === '') {
-                $errors["entries.$kpiId.target"] = 'Target is required (yearly target not set).';
-                continue;
+            // Resolve target: skip for display_only templates.
+            $targetValue = null;
+            if ($template->target_mode !== 'display_only') {
+                $targetValue = $payload['target'] ?? null;
+                if ($targetValue === '' || $targetValue === null) {
+                    $targetValue = KpiMonthlyTarget::query()
+                        ->where('kpi_definition_id', $kpiId)
+                        ->where('target_year', $targetYear)
+                        ->where('target_month', 1)
+                        ->value('target');
+                }
+                if ($targetValue === null || $targetValue === '') {
+                    $errors["entries.$kpiId.target"] = 'Target is required (yearly target not set).';
+                    continue;
+                }
             }
 
             // Resolve actual: manual or aggregated.
@@ -956,24 +967,28 @@ class KpiEntryController extends Controller
                 }
             }
 
-            $targetOperator = KpiMonthlyTarget::query()
-                ->where('kpi_definition_id', $kpiId)
-                ->where('target_year', $targetYear)
-                ->where('target_month', 1)
-                ->value('target_operator') ?: 'gte';
+            if ($template->target_mode === 'display_only') {
+                $status = null;
+            } else {
+                $targetOperator = KpiMonthlyTarget::query()
+                    ->where('kpi_definition_id', $kpiId)
+                    ->where('target_year', $targetYear)
+                    ->where('target_month', 1)
+                    ->value('target_operator') ?: 'gte';
 
-            $status = $this->computeKpiStatus(
-                (float) $actualValue,
-                (float) $targetValue,
-                $targetOperator
-            );
+                $status = $this->computeKpiStatus(
+                    (float) $actualValue,
+                    (float) $targetValue,
+                    $targetOperator
+                );
+            }
 
             $entriesToCreate[$kpiId] = [
                 'kpi_definition_id' => $kpiId,
                 'kpi_template_id' => (int) $template->id,
                 'department_id' => $departmentId,
                 'entry_date' => $entryDate,
-                'target' => (float) $targetValue,
+                'target' => $targetValue !== null ? (float) $targetValue : null,
                 'actual' => (float) $actualValue,
                 'status' => $status,
                 'notes' => $notes ?: null,

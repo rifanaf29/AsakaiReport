@@ -126,7 +126,8 @@
                                          data-actual-mode="{{ $tpl?->actual_mode ?? 'manual' }}"
                                          data-actual-aggregation="{{ $tpl?->actual_aggregation ?? '' }}"
                                          data-actual-field-keys='@json($tpl?->actual_field_keys ?? [])'
-                                         data-actual-formula="{{ $tpl?->actual_formula ?? '' }}">
+                                         data-actual-formula="{{ $tpl?->actual_formula ?? '' }}"
+                                         data-target-mode="{{ $tpl?->target_mode ?? 'with_target' }}">
                                         <div class="flex items-start justify-between gap-4 mb-4">
                                             <div>
                                                 <div class="text-sm text-gray-500 dark:text-gray-400">KPI</div>
@@ -414,6 +415,7 @@
 
         function applyActualMode(card) {
             const actualMode = card.dataset.actualMode || 'manual';
+            const targetMode = card.dataset.targetMode || 'with_target';
             const actualInput = card.querySelector('[data-actual-input]');
             if (!actualInput) return;
 
@@ -426,6 +428,21 @@
                 actualInput.readOnly = false;
                 actualInput.required = false;
                 actualInput.classList.remove('bg-gray-100', 'dark:bg-gray-600', 'cursor-not-allowed');
+            }
+
+            if (targetMode === 'display_only') {
+                // input → .flex.items-center → column div (label + input wrapper)
+                const targetCol = card.querySelector('[data-target-input]')?.parentElement?.parentElement;
+                if (targetCol) targetCol.style.display = 'none';
+
+                const hint = card.querySelector('[data-capa-hint]');
+                if (hint) {
+                    hint.textContent = 'Template ini hanya menampilkan data — tidak ada target atau status OK/NG';
+                    hint.className = 'text-sm mt-1 text-gray-500 dark:text-gray-400 italic';
+                }
+
+                const statusLabel = card.querySelector('[data-capa-status-label]');
+                if (statusLabel) statusLabel.textContent = '';
             }
         }
 
