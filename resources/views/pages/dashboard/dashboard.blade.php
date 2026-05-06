@@ -75,7 +75,27 @@
                             ->filter(fn ($v) => is_iterable($v))
                             ->map(fn ($v) => collect($v));
 
-                        $isCncWaste = (string) ($kpiChartMeta['template_code'] ?? '') === 'TPL_PD_WASTE_CNC_BENDING';
+                        $isDisplayOnly = ($kpiChartMeta['target_mode'] ?? 'with_target') === 'display_only';
+                        $dashboardFields = $kpiChartMeta['dashboard_fields'] ?? [];
+                        $fieldPalette = [
+                            'rgb(0, 112, 192)', 'rgb(192, 0, 0)', 'rgb(0, 176, 80)',
+                            'rgb(255, 153, 0)', 'rgb(112, 48, 160)', 'rgb(0, 176, 240)',
+                            'rgb(255, 0, 0)', 'rgb(146, 208, 80)',
+                        ];
+                        // Map chart field keys (in order) to palette colors
+                        $chartFieldKeys = !empty($dashboardFields)
+                            ? $dashboardFields
+                            : array_map(fn($k) => substr($k, 6), array_filter(array_keys($kpiChartData), fn($k) => str_starts_with($k, 'field:')));
+                        $dashboardColorMap = [];
+                        foreach (array_values($chartFieldKeys) as $i => $fk) {
+                            $dashboardColorMap[$fk] = $fieldPalette[$i % count($fieldPalette)];
+                        }
+
+                        if ($isDisplayOnly) {
+                            $kpiTableSeries = $kpiTableSeries->except(['target', 'actual']);
+                        }
+
+                        $isCncWaste = !$isDisplayOnly && (string) ($kpiChartMeta['template_code'] ?? '') === 'TPL_PD_WASTE_CNC_BENDING';
                         if ($isCncWaste) {
                             // Waste CNC Bending has no target/status; show Actual + all additional fields.
                             $kpiTableSeries = $kpiTableSeries->except(['target']);
@@ -107,7 +127,7 @@
                         $operator = $kpiChartMeta['target_operator'] ?? 'gte';
 
                         $statusSeries = collect();
-                        if (!$isCncWaste) {
+                        if (!$isCncWaste && !$isDisplayOnly) {
                             $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries, $operator) {
                                 $target = $targetSeries->get($index);
                                 $actual = $actualSeries->get($index);
@@ -192,9 +212,13 @@
                                             && \Illuminate\Support\Str::startsWith($seriesName, 'field:')
                                             && in_array(substr($seriesName, 6), $cncMoneyFieldKeys, true);
                                         $avgDValue = $isCncMoneyRow ? ($numericValues->count() ? $numericValues->sum() : null) : $avgValue;
+
+                                        $fieldKey = str_starts_with($seriesName, 'field:') ? substr($seriesName, 6) : null;
+                                        $isChartField = $isDisplayOnly && $fieldKey && isset($dashboardColorMap[$fieldKey]);
+                                        $chartColor = $isChartField ? $dashboardColorMap[$fieldKey] : null;
                                     @endphp
-                                    <tr>
-                                        <td class="p-2" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @endif>
+                                    <tr @if($isChartField) style="background-color: {{ preg_replace('/^rgb\((.+)\)$/', 'rgba($1, 0.07)', $chartColor) }};" @endif>
+                                        <td class="p-2" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @elseif($isChartField) style="border-left: 4px solid {{ $chartColor }}; padding-left: 8px;" @endif>
                                             @php
                                                 $seriesLabel = $kpiSeriesLabels[$seriesName] ?? \Illuminate\Support\Str::of($seriesName)->replace('_', ' ')->title();
                                                 if (($seriesName === 'target' || $seriesName === 'actual') && !empty($kpiUnit)) {
@@ -301,6 +325,7 @@
                         window.kpiActualTargetChartMeta = @json(array_merge($kpiChartMeta ?? [], [
                             'month_label' => $selectedMonthLabel ?? null,
                         ]));
+                        window.kpiSeriesLabels = @json($kpiSeriesLabels ?? []);
                     </script>
                 </div>
             </div>

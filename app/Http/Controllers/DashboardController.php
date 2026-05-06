@@ -282,6 +282,8 @@ class DashboardController extends Controller
             'unit' => $targetUnit,
             'target_operator' => $targetOperator,
             'month_label' => $selectedMonthLabel,
+            'target_mode' => $selectedTemplate?->target_mode ?? 'with_target',
+            'dashboard_fields' => $selectedTemplate?->dashboard_fields ?? [],
         ];
 
         // CAPA table: recent problems linked to KPI entries in the current filters.

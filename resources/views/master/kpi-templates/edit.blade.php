@@ -173,6 +173,7 @@
                         <label class="flex items-start gap-2">
                             <input type="radio" name="target_mode" value="with_target"
                                    class="form-radio text-indigo-600 mt-0.5"
+                                   onchange="toggleEditTargetMode('with_target')"
                                    {{ old('target_mode', $kpiTemplate->target_mode ?? 'with_target') === 'with_target' ? 'checked' : '' }}>
                             <div>
                                 <span class="text-sm text-gray-700 dark:text-gray-300">With Target</span>
@@ -182,6 +183,7 @@
                         <label class="flex items-start gap-2">
                             <input type="radio" name="target_mode" value="display_only"
                                    class="form-radio text-indigo-600 mt-0.5"
+                                   onchange="toggleEditTargetMode('display_only')"
                                    {{ old('target_mode', $kpiTemplate->target_mode) === 'display_only' ? 'checked' : '' }}>
                             <div>
                                 <span class="text-sm text-gray-700 dark:text-gray-300">Display Only</span>
@@ -190,6 +192,33 @@
                         </label>
                     </div>
                     @error('target_mode')
+                        <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <!-- Dashboard Fields (Display Only) -->
+                @php $savedDashboardFields = old('dashboard_fields', $kpiTemplate->dashboard_fields ?? []); @endphp
+                <div id="edit-dashboard-fields-section" class="mb-6 {{ ($kpiTemplate->target_mode ?? 'with_target') === 'display_only' ? '' : 'hidden' }}">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Dashboard Display Fields
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Pilih field yang ditampilkan di dashboard (kosongkan = tampilkan semua field)</p>
+                    <div id="edit-dashboard-fields-list" class="flex flex-wrap gap-3">
+                        @forelse($kpiTemplate->fields as $field)
+                            <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer hover:border-indigo-400 transition-colors">
+                                <input type="checkbox" name="dashboard_fields[]" value="{{ $field->field_key }}"
+                                       {{ in_array($field->field_key, $savedDashboardFields ?? []) ? 'checked' : '' }}
+                                       class="form-checkbox text-indigo-600 rounded">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">{{ $field->field_name }}</span>
+                                @if($field->field_type === 'calculated')
+                                    <span class="text-xs text-indigo-500 dark:text-indigo-400">auto</span>
+                                @endif
+                            </label>
+                        @empty
+                            <span class="text-xs text-gray-400 italic">Tidak ada field yang tersedia</span>
+                        @endforelse
+                    </div>
+                    @error('dashboard_fields')
                         <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
                     @enderror
                 </div>
@@ -542,6 +571,12 @@
                     calcField.classList.add('hidden');
                 }
             }
+        }
+
+        function toggleEditTargetMode(mode) {
+            const section = document.getElementById('edit-dashboard-fields-section');
+            if (!section) return;
+            section.classList.toggle('hidden', mode !== 'display_only');
         }
 
         function toggleActualMode(mode) {

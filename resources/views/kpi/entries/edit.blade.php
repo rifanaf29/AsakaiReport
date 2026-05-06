@@ -385,12 +385,64 @@
                 actualInput.required = false;
                 actualInput.classList.add('bg-gray-100', 'dark:bg-gray-600', 'cursor-not-allowed');
 
-                document.querySelectorAll('[data-field-key]').forEach((input) => {
+                document.querySelectorAll('[data-edit-dynamic-field]').forEach((input) => {
                     input.addEventListener('input', computeAggregatedActual);
                 });
 
                 computeAggregatedActual();
             }
+
+            // Calculated fields auto-computation
+            function preprocessFormula(formula) {
+                return formula
+                    .replace(/\bSUM\s*\(([^)]+)\)/gi, (_, args) => {
+                        const parts = args.split(',').map(s => s.trim()).filter(Boolean);
+                        return '(' + parts.join('+') + ')';
+                    })
+                    .replace(/\bAVG\s*\(([^)]+)\)/gi, (_, args) => {
+                        const parts = args.split(',').map(s => s.trim()).filter(Boolean);
+                        return '((' + parts.join('+') + ')/' + parts.length + ')';
+                    });
+            }
+
+            function evalSimple(expr, vars) {
+                // Replace variable names with their values
+                const replaced = expr.replace(/\b([a-z_][a-z0-9_]*)\b/gi, (m) => {
+                    const v = vars[m.toLowerCase()];
+                    return Number.isFinite(v) ? v : 'NaN';
+                });
+                try {
+                    // eslint-disable-next-line no-new-func
+                    const result = Function('"use strict"; return (' + replaced + ')')();
+                    return Number.isFinite(result) ? result : NaN;
+                } catch {
+                    return NaN;
+                }
+            }
+
+            function computeCalculatedFields() {
+                const dynamicMap = {};
+                document.querySelectorAll('[data-edit-dynamic-field]').forEach((input) => {
+                    const key = (input.dataset.fieldKey || '').toLowerCase();
+                    const num = parseFloat(input.value);
+                    if (key) dynamicMap[key] = Number.isFinite(num) ? num : null;
+                });
+
+                document.querySelectorAll('[data-calc-edit-field]').forEach((input) => {
+                    const rawFormula = (input.dataset.calcFormula || '').trim();
+                    if (!rawFormula) return;
+                    let expr = rawFormula.startsWith('=') ? rawFormula.slice(1).trim() : rawFormula;
+                    expr = preprocessFormula(expr);
+                    const result = evalSimple(expr, dynamicMap);
+                    input.value = Number.isFinite(result) ? result.toFixed(2) : '';
+                });
+            }
+
+            document.querySelectorAll('[data-edit-dynamic-field]').forEach((input) => {
+                input.addEventListener('input', computeCalculatedFields);
+            });
+
+            computeCalculatedFields();
         });
     </script>
 </x-app-layout>

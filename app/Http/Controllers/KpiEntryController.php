@@ -578,7 +578,10 @@ class KpiEntryController extends Controller
             $defForRules = KpiDefinition::with('template')->find($request->kpi_definition_id);
             $templateForRules = $defForRules?->template;
         }
-        $actualRule = ($templateForRules && $templateForRules->actual_mode === 'aggregated')
+        $actualRule = ($templateForRules && (
+                $templateForRules->actual_mode === 'aggregated' ||
+                $templateForRules->target_mode === 'display_only'
+            ))
             ? 'nullable|numeric'
             : 'required|numeric';
         $targetRule = ($templateForRules && $templateForRules->target_mode === 'display_only')
@@ -960,7 +963,7 @@ class KpiEntryController extends Controller
                     continue;
                 }
                 $actualValue = $computedActual;
-            } else {
+            } elseif ($template->target_mode !== 'display_only') {
                 if ($actualValue === null || $actualValue === '') {
                     $errors["entries.$kpiId.actual"] = 'Actual is required.';
                     continue;
@@ -1239,13 +1242,19 @@ class KpiEntryController extends Controller
             abort(403);
         }
 
-        $actualRule = $entry->template && $entry->template->actual_mode === 'aggregated'
+        $actualRule = $entry->template && (
+                $entry->template->actual_mode === 'aggregated' ||
+                $entry->template->target_mode === 'display_only'
+            )
+            ? 'nullable|numeric'
+            : 'required|numeric';
+        $targetRule = $entry->template && $entry->template->target_mode === 'display_only'
             ? 'nullable|numeric'
             : 'required|numeric';
 
         $validated = $request->validate([
             'entry_date' => 'required|date',
-            'target' => 'required|numeric',
+            'target' => $targetRule,
             'actual' => $actualRule,
             'notes' => 'nullable|string',
             'dynamic_fields' => 'nullable|array',
@@ -1272,34 +1281,39 @@ class KpiEntryController extends Controller
             $dynamicFields = $this->enrichDynamicFieldsForTemplate($entry->template, $dynamicFields);
         }
         $validated['dynamic_fields'] = $dynamicFields;
-        if ($entry->template && $entry->template->actual_mode === 'aggregated') {
-            $computedActual = $this->computeAggregatedActual($entry->template, $dynamicFields);
-            if ($computedActual === null) {
-                $message = ($entry->template->actual_aggregation === 'formula')
-                    ? 'Actual is computed by formula. Please enter numeric values for all referenced fields.'
-                    : 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.';
-                return back()->withInput()->withErrors([
-                    'actual' => $message,
-                ]);
+
+        if ($entry->template && $entry->template->target_mode === 'display_only') {
+            $validated['actual'] = null;
+            $validated['target'] = null;
+            $status = null;
+        } else {
+            if ($entry->template && $entry->template->actual_mode === 'aggregated') {
+                $computedActual = $this->computeAggregatedActual($entry->template, $dynamicFields);
+                if ($computedActual === null) {
+                    $message = ($entry->template->actual_aggregation === 'formula')
+                        ? 'Actual is computed by formula. Please enter numeric values for all referenced fields.'
+                        : 'Actual value is aggregated from selected fields. Please enter numeric values for the configured fields.';
+                    return back()->withInput()->withErrors([
+                        'actual' => $message,
+                    ]);
+                }
+                $validated['actual'] = $computedActual;
             }
 
-            $validated['actual'] = $computedActual;
+            $targetYear = Carbon::parse($validated['entry_date'])->year;
+            $targetOperator = KpiMonthlyTarget::query()
+                ->where('kpi_template_id', (int) $entry->kpi_template_id)
+                ->where('department_id', (int) $entry->department_id)
+                ->where('target_year', $targetYear)
+                ->where('target_month', 1)
+                ->value('target_operator') ?: 'gte';
+
+            $status = $this->computeKpiStatus(
+                (float) ($validated['actual'] ?? 0),
+                (float) ($validated['target'] ?? 0),
+                $targetOperator
+            );
         }
-
-        // Auto-calculate status
-        $targetYear = Carbon::parse($validated['entry_date'])->year;
-        $targetOperator = KpiMonthlyTarget::query()
-            ->where('kpi_template_id', (int) $entry->kpi_template_id)
-            ->where('department_id', (int) $entry->department_id)
-            ->where('target_year', $targetYear)
-            ->where('target_month', 1)
-            ->value('target_operator') ?: 'gte';
-
-        $status = $this->computeKpiStatus(
-            (float) $validated['actual'],
-            (float) $validated['target'],
-            $targetOperator
-        );
 
         // Check if CAPA data exists
         $hasCapaData = false;
@@ -1436,7 +1450,12 @@ class KpiEntryController extends Controller
             abort(403);
         }
 
-        $entry->delete();
+        DB::transaction(function () use ($entry) {
+            // Delete CAPA areas and their cascaded children (problems → causes → action plans)
+            $entry->capaAreas()->delete();
+            // Force delete so the unique (kpi_definition_id, entry_date) constraint is freed
+            $entry->forceDelete();
+        });
 
         return redirect()->route('kpi.entries.index')
             ->with('success', 'KPI Entry deleted successfully.');

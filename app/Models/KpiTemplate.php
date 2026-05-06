@@ -22,6 +22,7 @@ class KpiTemplate extends Model
         'actual_field_keys',
         'actual_formula',
         'target_mode',
+        'dashboard_fields',
         'is_active',
         'sort_order',
     ];
@@ -30,6 +31,7 @@ class KpiTemplate extends Model
         'is_active' => 'boolean',
         'sort_order' => 'integer',
         'actual_field_keys' => 'array',
+        'dashboard_fields' => 'array',
     ];
 
     /**

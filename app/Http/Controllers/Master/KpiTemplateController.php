@@ -65,6 +65,8 @@ class KpiTemplateController extends Controller
             'actual_field_keys.*' => 'string|max:50',
             'actual_formula' => 'nullable|string',
             'target_mode' => 'required|in:with_target,display_only',
+            'dashboard_fields' => 'nullable|array',
+            'dashboard_fields.*' => 'string|max:50',
             'is_active' => 'boolean',
             'fields' => 'nullable|array',
             'fields.*.field_name' => 'required|string|max:100',
@@ -107,6 +109,7 @@ class KpiTemplateController extends Controller
                 'actual_field_keys' => ($validated['actual_aggregation'] ?? null) === 'formula' ? null : ($validated['actual_field_keys'] ?? null),
                 'actual_formula' => ($validated['actual_aggregation'] ?? null) === 'formula' ? ($validated['actual_formula'] ?? null) : null,
                 'target_mode' => $validated['target_mode'],
+                'dashboard_fields' => $validated['target_mode'] === 'display_only' ? ($validated['dashboard_fields'] ?? null) : null,
                 'is_active' => $request->has('is_active'),
             ]);
 
@@ -175,6 +178,8 @@ class KpiTemplateController extends Controller
             'actual_field_keys.*' => 'string|max:50',
             'actual_formula' => 'nullable|string',
             'target_mode' => 'required|in:with_target,display_only',
+            'dashboard_fields' => 'nullable|array',
+            'dashboard_fields.*' => 'string|max:50',
             'is_active' => 'boolean',
             'fields' => 'nullable|array',
             'fields.*.field_name' => 'required|string|max:100',
@@ -217,6 +222,7 @@ class KpiTemplateController extends Controller
                 'actual_field_keys' => ($validated['actual_aggregation'] ?? null) === 'formula' ? null : ($validated['actual_field_keys'] ?? null),
                 'actual_formula' => ($validated['actual_aggregation'] ?? null) === 'formula' ? ($validated['actual_formula'] ?? null) : null,
                 'target_mode' => $validated['target_mode'],
+                'dashboard_fields' => $validated['target_mode'] === 'display_only' ? ($validated['dashboard_fields'] ?? null) : null,
                 'is_active' => $request->has('is_active'),
             ]);
 

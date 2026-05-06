@@ -164,6 +164,7 @@
                         <label class="flex items-start gap-2">
                             <input type="radio" name="target_mode" value="with_target"
                                    class="form-radio text-indigo-600 mt-0.5"
+                                   onchange="toggleTargetMode('with_target')"
                                    {{ old('target_mode', 'with_target') === 'with_target' ? 'checked' : '' }}>
                             <div>
                                 <span class="text-sm text-gray-700 dark:text-gray-300">With Target</span>
@@ -173,6 +174,7 @@
                         <label class="flex items-start gap-2">
                             <input type="radio" name="target_mode" value="display_only"
                                    class="form-radio text-indigo-600 mt-0.5"
+                                   onchange="toggleTargetMode('display_only')"
                                    {{ old('target_mode') === 'display_only' ? 'checked' : '' }}>
                             <div>
                                 <span class="text-sm text-gray-700 dark:text-gray-300">Display Only</span>
@@ -181,6 +183,20 @@
                         </label>
                     </div>
                     @error('target_mode')
+                        <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <!-- Dashboard Fields (Display Only) -->
+                <div id="dashboard-fields-section" class="mb-6 hidden">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Dashboard Display Fields
+                    </label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Pilih field yang ditampilkan di dashboard (kosongkan = tampilkan semua field)</p>
+                    <div id="dashboard-fields-list" class="flex flex-wrap gap-3">
+                        <span class="text-xs text-gray-400 italic">Tambah field terlebih dahulu untuk memilih tampilan dashboard</span>
+                    </div>
+                    @error('dashboard_fields')
                         <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
                     @enderror
                 </div>
@@ -378,6 +394,7 @@
             container.insertAdjacentHTML('beforeend', fieldHtml);
             bindFieldRowEvents(fieldIndex);
             updateActualFieldOptions();
+            updateDashboardFieldOptions();
             fieldIndex++;
         }
 
@@ -387,6 +404,7 @@
                 fieldRow.remove();
             }
             updateActualFieldOptions();
+            updateDashboardFieldOptions();
         }
 
         function toggleCalculationField(index, fieldType) {
@@ -398,6 +416,51 @@
                     calcField.classList.add('hidden');
                 }
             }
+        }
+
+        function toggleTargetMode(mode) {
+            const section = document.getElementById('dashboard-fields-section');
+            if (!section) return;
+            if (mode === 'display_only') {
+                section.classList.remove('hidden');
+                updateDashboardFieldOptions();
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        function updateDashboardFieldOptions() {
+            const isDisplayOnly = document.querySelector('input[name="target_mode"]:checked')?.value === 'display_only';
+            const list = document.getElementById('dashboard-fields-list');
+            if (!list || !isDisplayOnly) return;
+
+            const checkedKeys = Array.from(list.querySelectorAll('input[name="dashboard_fields[]"]:checked')).map(cb => cb.value);
+
+            const rows = document.querySelectorAll('.field-row');
+            if (rows.length === 0) {
+                list.innerHTML = '<span class="text-xs text-gray-400 italic">Tambah field terlebih dahulu untuk memilih tampilan dashboard</span>';
+                return;
+            }
+
+            list.innerHTML = '';
+            rows.forEach(row => {
+                const idx = row.dataset.index;
+                const nameInput = row.querySelector(`input[name="fields[${idx}][field_name]"]`);
+                const keyInput = row.querySelector(`input[name="fields[${idx}][field_key]"]`);
+                const fieldName = nameInput?.value?.trim() || `Field ${idx}`;
+                const fieldKey = keyInput?.value?.trim();
+                if (!fieldKey) return;
+
+                const isChecked = checkedKeys.includes(fieldKey);
+                const label = document.createElement('label');
+                label.className = 'flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer hover:border-indigo-400 transition-colors';
+                label.innerHTML = `
+                    <input type="checkbox" name="dashboard_fields[]" value="${fieldKey}" ${isChecked ? 'checked' : ''}
+                           class="form-checkbox text-indigo-600 rounded">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">${fieldName}</span>
+                `;
+                list.appendChild(label);
+            });
         }
 
         function toggleActualMode(mode) {
@@ -471,7 +534,10 @@
 
             [nameInput, keyInput].forEach((input) => {
                 if (input) {
-                    input.addEventListener('input', updateActualFieldOptions);
+                    input.addEventListener('input', () => {
+                        updateActualFieldOptions();
+                        updateDashboardFieldOptions();
+                    });
                 }
             });
         }

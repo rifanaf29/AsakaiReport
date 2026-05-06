@@ -91,6 +91,95 @@ const kpiActualTargetChart = () => {
   const actualColor = 'rgb(0, 112, 192)';
   const targetColor = 'rgb(192, 0, 0)';
 
+  const isDisplayOnly = getMeta().target_mode === 'display_only';
+  const dashboardFields = getMeta().dashboard_fields || [];
+  const seriesLabels = window.kpiSeriesLabels || {};
+
+  const fieldPalette = [
+    'rgb(0, 112, 192)',
+    'rgb(192, 0, 0)',
+    'rgb(0, 176, 80)',
+    'rgb(255, 153, 0)',
+    'rgb(112, 48, 160)',
+    'rgb(0, 176, 240)',
+    'rgb(255, 0, 0)',
+    'rgb(146, 208, 80)',
+  ];
+
+  if (isDisplayOnly) {
+    const fieldKeys = dashboardFields.length > 0
+      ? dashboardFields
+      : Object.keys(chartPayload).filter(k => k.startsWith('field:')).map(k => k.slice(6));
+
+    const displayDatasets = fieldKeys.map((key, i) => {
+      const seriesKey = `field:${key}`;
+      const color = fieldPalette[i % fieldPalette.length];
+      const label = seriesLabels[seriesKey] || key;
+      return {
+        label,
+        data: chartPayload[seriesKey] || [],
+        borderColor: color,
+        backgroundColor: adjustColorOpacity(color, 0.12),
+        fill: false,
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointBackgroundColor: color,
+        pointHoverBackgroundColor: color,
+        tension: 0.2,
+        clip: 20,
+      };
+    });
+
+    window.kpiActualTargetChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: displayDatasets },
+      options: {
+        layout: { padding: { top: 6, bottom: 10, left: 8, right: 8 } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            border: { display: false },
+            ticks: {
+              maxTicksLimit: 6,
+              callback: (value) => formatKpiValue(value, getUnit()),
+              color: darkMode ? textColor.dark : textColor.light,
+            },
+            grid: { color: darkMode ? gridColor.dark : gridColor.light },
+          },
+          x: {
+            type: 'time',
+            time: { parser: 'MM-DD-YYYY', unit: 'day', displayFormats: { day: 'MMM D' } },
+            border: { display: false },
+            grid: { display: false },
+            ticks: { color: darkMode ? textColor.dark : textColor.light, maxRotation: 0 },
+          },
+        },
+        plugins: {
+          title: {
+            display: true,
+            text: getMonthLabel() ? [getMeta().template_title || '', getMonthLabel()] : (getMeta().template_title || ''),
+            color: '#000000',
+            font: { size: 20, weight: '700' },
+            padding: { top: 6, bottom: 12 },
+          },
+          legend: { display: true },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const val = context.parsed.y;
+                return ` ${context.dataset.label}: ${formatKpiValue(val, getUnit())}`;
+              },
+            },
+          },
+        },
+        responsive: true,
+        maintainAspectRatio: false,
+      },
+    });
+    return;
+  }
+
   const isCncWaste = getTemplateCode() === 'TPL_PD_WASTE_CNC_BENDING';
   const cncWasteKg = chartPayload['field:total_waste_kg'] || [];
 

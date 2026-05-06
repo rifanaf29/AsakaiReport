@@ -58,28 +58,48 @@
                             ->filter(fn ($v) => is_iterable($v))
                             ->map(fn ($v) => collect($v));
 
-                        $targetSeries = $kpiTableSeries->get('target', collect());
-                        $actualSeries = $kpiTableSeries->get('actual', collect());
+                        $isDisplayOnly = ($kpiChartMeta['target_mode'] ?? 'with_target') === 'display_only';
 
-                        $operator = $kpiChartMeta['target_operator'] ?? 'gte';
+                        if ($isDisplayOnly) {
+                            $kpiTableSeries = $kpiTableSeries->except(['target', 'actual']);
+                            $statusSeries = collect();
+                        } else {
+                            $targetSeries = $kpiTableSeries->get('target', collect());
+                            $actualSeries = $kpiTableSeries->get('actual', collect());
+                            $operator = $kpiChartMeta['target_operator'] ?? 'gte';
 
-                        $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries, $operator) {
-                            $target = $targetSeries->get($index);
-                            $actual = $actualSeries->get($index);
+                            $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries, $operator) {
+                                $target = $targetSeries->get($index);
+                                $actual = $actualSeries->get($index);
 
-                            if ($target === null || $target === '' || $actual === null || $actual === '') return null;
-                            if (!is_numeric($target) || !is_numeric($actual)) return null;
+                                if ($target === null || $target === '' || $actual === null || $actual === '') return null;
+                                if (!is_numeric($target) || !is_numeric($actual)) return null;
 
-                            if ($operator === 'lte') {
-                                return ((float) $actual <= (float) $target) ? 'OK' : 'NG';
-                            }
+                                if ($operator === 'lte') {
+                                    return ((float) $actual <= (float) $target) ? 'OK' : 'NG';
+                                }
 
-                            return ((float) $actual >= (float) $target) ? 'OK' : 'NG';
-                        });
+                                return ((float) $actual >= (float) $target) ? 'OK' : 'NG';
+                            });
 
-                        $kpiTableSeries = $kpiTableSeries->merge([
-                            'status' => $statusSeries,
-                        ]);
+                            $kpiTableSeries = $kpiTableSeries->merge([
+                                'status' => $statusSeries,
+                            ]);
+                        }
+
+                        $dashboardFields = $kpiChartMeta['dashboard_fields'] ?? [];
+                        $fieldPalette = [
+                            'rgb(0, 112, 192)', 'rgb(192, 0, 0)', 'rgb(0, 176, 80)',
+                            'rgb(255, 153, 0)', 'rgb(112, 48, 160)', 'rgb(0, 176, 240)',
+                            'rgb(255, 0, 0)', 'rgb(146, 208, 80)',
+                        ];
+                        $chartFieldKeys = !empty($dashboardFields)
+                            ? $dashboardFields
+                            : array_map(fn($k) => substr($k, 6), array_filter(array_keys($kpiChartData), fn($k) => str_starts_with($k, 'field:')));
+                        $dashboardColorMap = [];
+                        foreach (array_values($chartFieldKeys) as $i => $fk) {
+                            $dashboardColorMap[$fk] = $fieldPalette[$i % count($fieldPalette)];
+                        }
 
                         $kpiUnit = $kpiChartMeta['unit'] ?? null;
                         $showMonthlyTotals = \Illuminate\Support\Str::startsWith((string) ($kpiChartMeta['template_code'] ?? ''), 'TPL_HR_WASTE_');
@@ -90,6 +110,8 @@
                             return rtrim(rtrim(number_format($number, 2, '.', ','), '0'), '.');
                         };
 
+                        $actualSeries = $actualSeries ?? collect();
+                        $targetSeries = $targetSeries ?? collect();
                         $actualNumeric = $actualSeries->filter(fn ($v) => is_numeric($v))->map(fn ($v) => (float) $v);
                         $actualSum = $actualNumeric->sum();
                         $actualCount = $actualNumeric->count();
@@ -131,8 +153,13 @@
                             </thead>
                             <tbody class="text-xs font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
                                 @foreach($kpiTableSeries as $seriesName => $seriesValues)
-                                    <tr>
-                                        <td class="p-2">
+                                    @php
+                                        $fieldKey = str_starts_with($seriesName, 'field:') ? substr($seriesName, 6) : null;
+                                        $isChartField = $isDisplayOnly && $fieldKey && isset($dashboardColorMap[$fieldKey]);
+                                        $chartColor = $isChartField ? $dashboardColorMap[$fieldKey] : null;
+                                    @endphp
+                                    <tr @if($isChartField) style="background-color: {{ preg_replace('/^rgb\((.+)\)$/', 'rgba($1, 0.07)', $chartColor) }};" @endif>
+                                        <td class="p-2" @if($isChartField) style="border-left: 4px solid {{ $chartColor }}; padding-left: 8px;" @endif>
                                             @php
                                                 $seriesLabel = $kpiSeriesLabels[$seriesName] ?? \Illuminate\Support\Str::of($seriesName)->replace('_', ' ')->title();
                                                 if (($seriesName === 'target' || $seriesName === 'actual') && !empty($kpiUnit)) {
@@ -193,6 +220,7 @@
                                     </tr>
                                 @endforeach
                             </tbody>
+                            @if(!$isDisplayOnly)
                             <tfoot class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
                                 <tr>
                                     <td class="p-2">
@@ -212,6 +240,7 @@
                                     </td>
                                 </tr>
                             </tfoot>
+                            @endif
                         </table>
                     </div>
 
@@ -220,6 +249,7 @@
                         window.kpiActualTargetChartMeta = @json(array_merge($kpiChartMeta ?? [], [
                             'month_label' => $selectedMonthLabel ?? null,
                         ]));
+                        window.kpiSeriesLabels = @json($kpiSeriesLabels ?? []);
                         window.presentationDashboardPayloadUrl = @json(route('dashboard.payload'));
                     </script>
                 </div>
@@ -298,7 +328,8 @@
                         const operator = meta.target_operator || 'gte';
                         const templateCode = String(meta.template_code || '');
                         const isCncWaste = templateCode === 'TPL_PD_WASTE_CNC_BENDING';
-                        const showMonthlyTotals = !isCncWaste && templateCode.startsWith('TPL_HR_WASTE_');
+                        const isDisplayOnly = meta.target_mode === 'display_only';
+                        const showMonthlyTotals = !isCncWaste && !isDisplayOnly && templateCode.startsWith('TPL_HR_WASTE_');
                         const showCncAverages = isCncWaste;
                         const cncMoneyKeys = new Set(['d6', 'd7', 'd8', 'd9', 'd11', 'd12', 'd13', 'copq_material']);
 
@@ -308,6 +339,20 @@
                         const allFieldKeys = Object.keys(chartData).filter((k) => k.startsWith('field:'));
                         const fieldKeys = allFieldKeys;
 
+                        const fieldPalette = [
+                            'rgb(0, 112, 192)', 'rgb(192, 0, 0)', 'rgb(0, 176, 80)',
+                            'rgb(255, 153, 0)', 'rgb(112, 48, 160)', 'rgb(0, 176, 240)',
+                            'rgb(255, 0, 0)', 'rgb(146, 208, 80)',
+                        ];
+                        const dashboardFields = Array.isArray(meta.dashboard_fields) ? meta.dashboard_fields : [];
+                        const chartFieldKeys = isDisplayOnly
+                            ? (dashboardFields.length > 0 ? dashboardFields : allFieldKeys.map((k) => k.slice(6)))
+                            : [];
+                        const fieldColorMap = {};
+                        chartFieldKeys.forEach((key, i) => {
+                            fieldColorMap[key] = fieldPalette[i % fieldPalette.length];
+                        });
+
                         const cncSeriesOrder = (() => {
                             const wanted = ['field:hasil_produksi', 'field:total_waste_kg', 'actual'];
                             const rest = ['actual', ...fieldKeys].filter((k) => !wanted.includes(k));
@@ -316,9 +361,11 @@
 
                         const seriesOrder = isCncWaste
                             ? cncSeriesOrder
-                            : ['target', 'actual', ...fieldKeys, 'status'];
+                            : (isDisplayOnly
+                                ? [...fieldKeys]
+                                : ['target', 'actual', ...fieldKeys, 'status']);
 
-                        const status = isCncWaste ? [] : labels.map((_, i) => computeStatus(target[i], actual[i], operator));
+                        const status = (isCncWaste || isDisplayOnly) ? [] : labels.map((_, i) => computeStatus(target[i], actual[i], operator));
 
                         const actualNumeric = actual
                             .map((v) => Number(v))
@@ -435,9 +482,21 @@
                                 }
                             }
 
+                            const fieldKeyPlain = seriesName.startsWith('field:') ? seriesName.slice(6) : null;
+                            const isChartField = isDisplayOnly && fieldKeyPlain && fieldColorMap[fieldKeyPlain];
+                            const chartColor = isChartField ? fieldColorMap[fieldKeyPlain] : null;
+                            const trRowStyle = isChartField
+                                ? `background-color: ${chartColor.replace('rgb(', 'rgba(').replace(')', ', 0.07)')};`
+                                : '';
+                            const isCncHighlight = isCncWaste && (seriesName === 'field:total_waste_kg' || seriesName === 'actual');
+                            const firstTdStyle = isCncHighlight
+                                ? 'background-color: rgb(192, 0, 0);'
+                                : (isChartField ? `border-left: 4px solid ${chartColor}; padding-left: 8px;` : '');
+                            const firstTdTextClass = isCncHighlight ? 'text-white' : 'text-gray-800 dark:text-gray-100';
+
                             return `
-                                <tr>
-                                    <td class="p-2" style="${(isCncWaste && (seriesName === 'field:total_waste_kg' || seriesName === 'actual')) ? 'background-color: rgb(192, 0, 0);' : ''}"><div class="${(isCncWaste && (seriesName === 'field:total_waste_kg' || seriesName === 'actual')) ? 'text-white' : 'text-gray-800 dark:text-gray-100'}">${escapeHtml(label)}</div></td>
+                                <tr style="${trRowStyle}">
+                                    <td class="p-2" style="${firstTdStyle}"><div class="${firstTdTextClass}">${escapeHtml(label)}</div></td>
                                     ${cells}
                                     ${totalCell}
                                     ${avgCells}
@@ -464,7 +523,7 @@
                                 <tbody class="text-xs font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
                                     ${bodyRows}
                                 </tbody>
-                                ${isCncWaste ? '' : `
+                                ${(isCncWaste || isDisplayOnly) ? '' : `
                                 <tfoot class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
                                     <tr>
                                         <td class="p-2"><div class="font-semibold text-left">Summary</div></td>
@@ -512,6 +571,7 @@
 
                         window.kpiActualTargetChartData = payload.kpiChartData;
                         window.kpiActualTargetChartMeta = payload.kpiChartMeta;
+                        window.kpiSeriesLabels = payload.kpiSeriesLabels || {};
 
                         if (elSubtitle) {
                             elSubtitle.textContent = buildSubtitleText(payload.selectedMonthLabel, payload?.kpiChartMeta?.template_title, payload?.kpiChartMeta?.unit);
