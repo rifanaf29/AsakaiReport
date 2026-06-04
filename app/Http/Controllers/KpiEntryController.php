@@ -30,7 +30,7 @@ class KpiEntryController extends Controller
         Gate::authorize('view kpi');
 
         $user = auth()->user();
-        $query = KpiEntry::with(['template.departments', 'department'])
+        $query = KpiEntry::with(['template', 'kpiDefinition', 'department'])
             ->withCount([
                 'capaProblems as problems_count',
                 'capaProblems as problems_closed_count' => function ($problemQuery) {
@@ -63,9 +63,9 @@ class KpiEntryController extends Controller
             $query->where('department_id', $request->department);
         }
 
-        // Template filter
-        if ($request->filled('template')) {
-            $query->where('kpi_template_id', $request->template);
+        // KPI definition filter
+        if ($request->filled('kpi_definition')) {
+            $query->where('kpi_definition_id', $request->kpi_definition);
         }
 
         // Date range filter
@@ -82,34 +82,24 @@ class KpiEntryController extends Controller
         }
 
         $entries = $query->latest('entry_date')->paginate(15);
-        $departments = $user->can_access_all_departments 
-            ? Department::active()->orderBy('name')->get() 
+        $departments = $user->can_access_all_departments
+            ? Department::active()->orderBy('name')->get()
             : collect([$user->department]);
-        $templates = KpiTemplate::active()
-            ->with(['departments' => function ($q) use ($user, $request) {
-                $departmentId = $request->filled('department') ? (int) $request->department : null;
-                if ($departmentId) {
-                    $q->where('departments.id', $departmentId);
-                } elseif (!$user->can_access_all_departments) {
-                    $q->where('departments.id', $user->department_id);
-                }
-            }])
+
+        $kpiDefinitions = KpiDefinition::query()
+            ->where('is_active', 1)
+            ->with('template')
             ->when($request->filled('department'), function ($q) use ($request) {
-                $departmentId = (int) $request->department;
-                return $q->whereHas('departments', function ($deptQuery) use ($departmentId) {
-                    $deptQuery->where('departments.id', $departmentId)
-                        ->where('kpi_template_departments.is_active', 1);
-                });
+                return $q->where('department_id', (int) $request->department);
             })
             ->when(!$user->can_access_all_departments && !$request->filled('department'), function ($q) use ($user) {
-                return $q->whereHas('departments', function ($deptQuery) use ($user) {
-                    $deptQuery->where('departments.id', $user->department_id)
-                        ->where('kpi_template_departments.is_active', 1);
-                });
+                return $q->where('department_id', $user->department_id);
             })
-            ->orderBy('code')->get();
+            ->orderByRaw('COALESCE(sort_order, 999999) asc')
+            ->orderBy('id')
+            ->get();
 
-        return view('kpi.entries.index', compact('entries', 'departments', 'templates'));
+        return view('kpi.entries.index', compact('entries', 'departments', 'kpiDefinitions'));
     }
 
     /**

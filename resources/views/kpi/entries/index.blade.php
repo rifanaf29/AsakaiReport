@@ -46,15 +46,12 @@
                         @endif
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Template</label>
-                            <select name="template" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                                <option value="">All Templates</option>
-                                @foreach($templates as $template)
-                                    @php
-                                        $displayName = $template->departments->first()?->pivot?->display_name ?: $template->code;
-                                    @endphp
-                                    <option value="{{ $template->id }}" {{ request('template') == $template->id ? 'selected' : '' }}>
-                                        {{ $displayName }}
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">KPI Name</label>
+                            <select name="kpi_definition" class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                                <option value="">All KPIs</option>
+                                @foreach($kpiDefinitions as $kpiDef)
+                                    <option value="{{ $kpiDef->id }}" {{ request('kpi_definition') == $kpiDef->id ? 'selected' : '' }}>
+                                        {{ $kpiDef->display_name ?: ($kpiDef->template?->code ?: 'KPI') }}
                                     </option>
                                 @endforeach
                             </select>
@@ -99,7 +96,7 @@
                             <thead class="bg-gray-50 dark:bg-gray-700">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Template</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">KPI Name</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Department</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Target</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actual</th>
@@ -117,12 +114,7 @@
                                             {{ $entry->entry_date->format('Y-m-d') }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            @php
-                                                $entryTemplateDisplay = $entry->template->departments
-                                                    ->firstWhere('id', $entry->department_id)?->pivot?->display_name
-                                                    ?: $entry->template->code;
-                                            @endphp
-                                            {{ $entryTemplateDisplay }}
+                                            {{ $entry->kpiDefinition?->display_name ?: ($entry->template?->code ?: '-') }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                                             {{ $entry->department->name }}
