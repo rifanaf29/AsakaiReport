@@ -8,6 +8,9 @@
             </div>
 
             <form method="GET" action="{{ route('dashboard') }}" class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end min-w-0">
+                @if(!empty($selectedCapaStatus))
+                    <input type="hidden" name="capa_status" value="{{ $selectedCapaStatus }}" />
+                @endif
                 <div class="sm:col-span-3 min-w-0">
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Department</label>
                     <select id="dashboard-dept" name="department" class="form-select w-full min-w-0 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
@@ -38,7 +41,7 @@
                     </select>
                 </div>
 
-                <div class="sm:col-span-3 flex gap-2 justify-end">
+                <div class="sm:col-span-3 flex flex-wrap gap-2 justify-end">
                     <button type="submit" class="btn bg-gray-900 text-gray-100 hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-800 dark:hover:bg-white">Apply</button>
                     <a href="{{ route('dashboard') }}" class="btn bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Reset</a>
                     <a href="{{ route('dashboard', array_merge(request()->query(), ['fullscreen' => 1])) }}" class="btn bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">Fullscreen</a>
@@ -57,274 +60,42 @@
             <div class="col-span-full bg-white dark:bg-gray-800 shadow-xs rounded-xl">
                 <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60">
                     <div class="flex items-center justify-between">
-                        <h2 class="font-semibold text-gray-800 dark:text-gray-100">KPI Actual vs Target</h2>
+                        <h2 class="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                            <span class="inline-flex shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true">
+                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                            </span>
+                            <span>KPI Actual vs Target</span>
+                        </h2>
                         <div class="text-sm text-gray-500 dark:text-gray-400">
                             {{ $selectedMonthLabel ?? '' }}{{ ($selectedMonthLabel ?? null) ? ' • ' : '' }}{{ $kpiChartMeta['template_title'] ?? 'All KPIs' }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}
                         </div>
                     </div>
                 </header>
                 <div class="p-5">
-                    <div class="h-[320px]">
-                        <canvas id="kpi-actual-target-chart" height="320"></canvas>
+                    <div id="kpi-chart-table-sync" class="overflow-x-auto">
+                        <div id="kpi-chart-table-sync-inner">
+                            <div class="kpi-chart-table-wrap shrink-0 overflow-hidden mb-2" style="height:280px;min-height:280px;max-height:280px;box-sizing:border-box;">
+                                <canvas id="kpi-actual-target-chart" height="280" width="800"></canvas>
+                            </div>
+                    @include('pages.dashboard.partials.kpi-pivot-table')
+
+                            </div>
+                        </div>
                     </div>
 
                     @php
-                        $kpiTableLabels = collect($kpiChartData['labels'] ?? []);
-                        $kpiTableSeries = collect($kpiChartData)
-                            ->except('labels')
-                            ->filter(fn ($v) => is_iterable($v))
-                            ->map(fn ($v) => collect($v));
-
-                        $isDisplayOnly = ($kpiChartMeta['target_mode'] ?? 'with_target') === 'display_only';
-                        $dashboardFields = $kpiChartMeta['dashboard_fields'] ?? [];
-                        $fieldPalette = [
-                            'rgb(0, 112, 192)', 'rgb(192, 0, 0)', 'rgb(0, 176, 80)',
-                            'rgb(255, 153, 0)', 'rgb(112, 48, 160)', 'rgb(0, 176, 240)',
-                            'rgb(255, 0, 0)', 'rgb(146, 208, 80)',
-                        ];
-                        // Map chart field keys (in order) to palette colors
-                        $chartFieldKeys = !empty($dashboardFields)
-                            ? $dashboardFields
-                            : array_map(fn($k) => substr($k, 6), array_filter(array_keys($kpiChartData), fn($k) => str_starts_with($k, 'field:')));
-                        $dashboardColorMap = [];
-                        foreach (array_values($chartFieldKeys) as $i => $fk) {
-                            $dashboardColorMap[$fk] = $fieldPalette[$i % count($fieldPalette)];
+                        $kpiFieldUnitsForJs = $kpiChartMeta['field_units'] ?? [];
+                        if ($kpiFieldUnitsForJs === [] && ! empty($selectedKpiDefinition?->template)) {
+                            $kpiFieldUnitsForJs = $selectedKpiDefinition->template->fields()->pluck('unit', 'field_key')->all();
                         }
-
-                        if ($isDisplayOnly) {
-                            $kpiTableSeries = $kpiTableSeries->except(['target', 'actual']);
-                        }
-
-                        $isCncWaste = !$isDisplayOnly && (string) ($kpiChartMeta['template_code'] ?? '') === 'TPL_PD_WASTE_CNC_BENDING';
-                        if ($isCncWaste) {
-                            // Waste CNC Bending has no target/status; show Actual + all additional fields.
-                            $kpiTableSeries = $kpiTableSeries->except(['target']);
-                        }
-
-                        if ($isCncWaste) {
-                            // Custom row order for CNC:
-                            // Hasil Produksi -> Total Waste (KG) -> Total Waste (%) -> the rest
-                            $ordered = collect();
-
-                            if ($kpiTableSeries->has('field:hasil_produksi')) {
-                                $ordered['field:hasil_produksi'] = $kpiTableSeries['field:hasil_produksi'];
-                            }
-                            if ($kpiTableSeries->has('field:total_waste_kg')) {
-                                $ordered['field:total_waste_kg'] = $kpiTableSeries['field:total_waste_kg'];
-                            }
-                            if ($kpiTableSeries->has('actual')) {
-                                $ordered['actual'] = $kpiTableSeries['actual'];
-                            }
-
-                            $kpiTableSeries = $ordered->merge(
-                                $kpiTableSeries->except(['field:hasil_produksi', 'field:total_waste_kg', 'actual'])
-                            );
-                        }
-
-                        $targetSeries = $kpiTableSeries->get('target', collect());
-                        $actualSeries = $kpiTableSeries->get('actual', collect());
-
-                        $operator = $kpiChartMeta['target_operator'] ?? 'gte';
-
-                        $statusSeries = collect();
-                        if (!$isCncWaste && !$isDisplayOnly) {
-                            $statusSeries = $kpiTableLabels->values()->map(function ($_, $index) use ($targetSeries, $actualSeries, $operator) {
-                                $target = $targetSeries->get($index);
-                                $actual = $actualSeries->get($index);
-
-                                if ($target === null || $target === '' || $actual === null || $actual === '') return null;
-                                if (!is_numeric($target) || !is_numeric($actual)) return null;
-
-                                if ($operator === 'lte') {
-                                    return ((float) $actual <= (float) $target) ? 'OK' : 'NG';
-                                }
-
-                                return ((float) $actual >= (float) $target) ? 'OK' : 'NG';
-                            });
-
-                            $kpiTableSeries = $kpiTableSeries->merge([
-                                'status' => $statusSeries,
-                            ]);
-                        }
-
-                        $kpiUnit = $kpiChartMeta['unit'] ?? null;
-                        $showMonthlyTotals = \Illuminate\Support\Str::startsWith((string) ($kpiChartMeta['template_code'] ?? ''), 'TPL_HR_WASTE_');
-                        $showCncAverages = $isCncWaste;
-                        $cncMoneyFieldKeys = ['d6','d7','d8','d9','d11','d12','d13','copq_material'];
-                        $formatKpiCell = function ($value) {
-                            if ($value === null || $value === '') return '';
-                            if (!is_numeric($value)) return '';
-                            $number = (float) $value;
-                            return rtrim(rtrim(number_format($number, 2, '.', ','), '0'), '.');
-                        };
-
-                        $actualNumeric = $actualSeries->filter(fn ($v) => is_numeric($v))->map(fn ($v) => (float) $v);
-                        $actualSum = $actualNumeric->sum();
-                        $actualCount = $actualNumeric->count();
-                        $actualAvg = $actualCount ? ($actualSum / $actualCount) : null;
-
-                        $targetValue = $targetSeries->first(fn ($v) => is_numeric($v));
-
-                        $okCount = $statusSeries->filter(fn ($v) => $v === 'OK')->count();
-                        $ngCount = $statusSeries->filter(fn ($v) => $v === 'NG')->count();
+                        $kpiChartMetaJs = array_merge($kpiChartMeta ?? [], [
+                            'month_label' => $selectedMonthLabel ?? null,
+                            'field_units' => $kpiFieldUnitsForJs,
+                        ]);
                     @endphp
-
-                    <div class="mt-4 overflow-x-auto">
-                        <table class="table-auto w-full text-xs dark:text-gray-300">
-                            <thead class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
-                                <tr>
-                                    <th class="p-2"><div class="font-semibold text-left">Field</div></th>
-                                    @foreach($kpiTableLabels as $label)
-                                        @php
-                                            try {
-                                                $labelDate = \Carbon\Carbon::createFromFormat('m-d-Y', $label);
-                                                $labelText = $labelDate->format('d');
-                                                $dowIso = $labelDate->dayOfWeekIso; // 1=Mon ... 6=Sat, 7=Sun
-                                                $dateHeaderCellStyle = $dowIso === 6
-                                                    ? 'background-color: rgb(255, 255, 0);'
-                                                    : ($dowIso === 7 ? 'background-color: rgb(192, 0, 0);' : '');
-                                                $dateHeaderTextClass = $dateHeaderCellStyle ? 'text-white' : '';
-                                            } catch (\Exception $e) {
-                                                $labelText = $label;
-                                                $dateHeaderCellStyle = '';
-                                                $dateHeaderTextClass = '';
-                                            }
-                                        @endphp
-                                        <th class="p-2 whitespace-nowrap" style="{{ $dateHeaderCellStyle }}"><div class="font-semibold text-center {{ $dateHeaderTextClass }}">{{ $labelText }}</div></th>
-                                    @endforeach
-                                    @if($showMonthlyTotals)
-                                        <th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Total</div></th>
-                                    @endif
-                                    @if($showCncAverages)
-                                        <th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average</div></th>
-                                        <th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average/D</div></th>
-                                    @endif
-                                </tr>
-                            </thead>
-                            <tbody class="text-xs font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
-                                @foreach($kpiTableSeries as $seriesName => $seriesValues)
-                                    @php
-                                        $isCncTotalRow = $isCncWaste && in_array($seriesName, ['field:total_waste_kg', 'actual'], true);
-
-                                        $numericValues = collect($seriesValues)->filter(fn ($x) => is_numeric($x))->map(fn ($x) => (float) $x);
-                                        $avgValue = $numericValues->count() ? ($numericValues->sum() / $numericValues->count()) : null;
-                                        $isCncMoneyRow = $isCncWaste
-                                            && \Illuminate\Support\Str::startsWith($seriesName, 'field:')
-                                            && in_array(substr($seriesName, 6), $cncMoneyFieldKeys, true);
-                                        $avgDValue = $isCncMoneyRow ? ($numericValues->count() ? $numericValues->sum() : null) : $avgValue;
-
-                                        $fieldKey = str_starts_with($seriesName, 'field:') ? substr($seriesName, 6) : null;
-                                        $isChartField = $isDisplayOnly && $fieldKey && isset($dashboardColorMap[$fieldKey]);
-                                        $chartColor = $isChartField ? $dashboardColorMap[$fieldKey] : null;
-                                    @endphp
-                                    <tr @if($isChartField) style="background-color: {{ preg_replace('/^rgb\((.+)\)$/', 'rgba($1, 0.07)', $chartColor) }};" @endif>
-                                        <td class="p-2" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @elseif($isChartField) style="border-left: 4px solid {{ $chartColor }}; padding-left: 8px;" @endif>
-                                            @php
-                                                $seriesLabel = $kpiSeriesLabels[$seriesName] ?? \Illuminate\Support\Str::of($seriesName)->replace('_', ' ')->title();
-                                                if (($seriesName === 'target' || $seriesName === 'actual') && !empty($kpiUnit)) {
-                                                    $seriesLabel .= ' (' . $kpiUnit . ')';
-                                                }
-                                            @endphp
-                                            <div class="{{ $isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100' }}">{{ $seriesLabel }}</div>
-                                        </td>
-                                        @foreach($seriesValues as $v)
-                                            @php
-                                                $tdClass = '';
-                                                $tdStyle = '';
-                                                $valueTextClass = 'text-gray-800 dark:text-gray-100';
-                                                $isDynamicField = \Illuminate\Support\Str::startsWith($seriesName, 'field:');
-                                                if ($seriesName === 'target') {
-                                                    $tdStyle = 'background-color: rgb(192, 0, 0);';
-                                                    $valueTextClass = 'text-white';
-                                                } elseif ($seriesName === 'actual') {
-                                                    $tdStyle = 'background-color: rgb(0, 112, 192);';
-                                                    $valueTextClass = 'text-white';
-                                                } elseif ($seriesName === 'status') {
-                                                    $tdClass = $v === 'OK'
-                                                        ? 'bg-green-50 dark:bg-green-900/20'
-                                                        : ($v === 'NG' ? 'bg-red-50 dark:bg-red-900/20' : '');
-                                                }
-
-                                                if ($isCncTotalRow) {
-                                                    $tdStyle = 'background-color: rgb(192, 0, 0);';
-                                                    $valueTextClass = 'text-white';
-                                                }
-                                            @endphp
-                                            <td class="p-2 whitespace-nowrap {{ $tdClass }}" style="{{ $tdStyle }}">
-                                                @if($seriesName === 'status')
-                                                    @if($v === 'OK')
-                                                        <div class="text-center text-xs text-green-700 dark:text-green-300">OK</div>
-                                                    @elseif($v === 'NG')
-                                                        <div class="text-center text-xs text-red-700 dark:text-red-300">NG</div>
-                                                    @else
-                                                        <div class="text-center text-xs text-gray-400 dark:text-gray-500"></div>
-                                                    @endif
-                                                @else
-                                                    <div class="text-center {{ $valueTextClass }}">
-                                                        {{ $isDynamicField ? ($isCncWaste ? $formatKpiCell($v) : ($v ?? '')) : $formatKpiCell($v) }}
-                                                    </div>
-                                                @endif
-                                            </td>
-                                        @endforeach
-
-                                        @if($showMonthlyTotals)
-                                            @php
-                                                $isDynamicField = \Illuminate\Support\Str::startsWith($seriesName, 'field:');
-                                                $total = null;
-                                                if ($isDynamicField) {
-                                                    $total = collect($seriesValues)->filter(fn ($x) => is_numeric($x))->map(fn ($x) => (float) $x)->sum();
-                                                }
-                                            @endphp
-                                            <td class="p-2 whitespace-nowrap">
-                                                <div class="text-center text-gray-800 dark:text-gray-100">
-                                                    {{ $isDynamicField && $total !== null ? $formatKpiCell($total) : '' }}
-                                                </div>
-                                            </td>
-                                        @endif
-
-                                        @if($showCncAverages)
-                                            <td class="p-2 whitespace-nowrap" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @endif>
-                                                <div class="text-center {{ $isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100' }}">
-                                                    {{ $avgValue !== null ? $formatKpiCell($avgValue) : '' }}
-                                                </div>
-                                            </td>
-                                            <td class="p-2 whitespace-nowrap" @if($isCncTotalRow) style="background-color: rgb(192, 0, 0);" @endif>
-                                                <div class="text-center {{ $isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100' }}">
-                                                    {{ $avgDValue !== null ? $formatKpiCell($avgDValue) : '' }}
-                                                </div>
-                                            </td>
-                                        @endif
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                            @if(!$isCncWaste)
-                            <tfoot class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
-                                <tr>
-                                    <td class="p-2">
-                                        <div class="font-semibold text-left">Summary</div>
-                                    </td>
-                                    <td class="p-2" colspan="{{ $kpiTableLabels->count() }}">
-                                        @php
-                                            $unitSuffix = $kpiUnit ? ($kpiUnit === '%' ? '%' : (' ' . $kpiUnit)) : '';
-                                        @endphp
-                                        <div class="flex flex-wrap justify-end gap-x-4 gap-y-1">
-                                            <div><span class="font-semibold">Target</span>: {{ $formatKpiCell($targetValue) ?: '-' }}{{ $unitSuffix }}</div>
-                                            <div><span class="font-semibold">Actual Avg</span>: {{ $actualCount ? $formatKpiCell($actualAvg) : '-' }}{{ $unitSuffix }}</div>
-                                            <div><span class="font-semibold">OK</span>: {{ $okCount }}</div>
-                                            <div><span class="font-semibold">NG</span>: {{ $ngCount }}</div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tfoot>
-                            @endif
-                        </table>
-                    </div>
-
                     <script>
                         window.kpiActualTargetChartData = @json($kpiChartData);
-                        window.kpiActualTargetChartMeta = @json(array_merge($kpiChartMeta ?? [], [
-                            'month_label' => $selectedMonthLabel ?? null,
-                        ]));
+                        window.kpiActualTargetChartMeta = @json($kpiChartMetaJs);
                         window.kpiSeriesLabels = @json($kpiSeriesLabels ?? []);
                     </script>
                 </div>
@@ -332,9 +103,38 @@
 
             <!-- CAPA Problems Table -->
             <div class="col-span-full bg-white dark:bg-gray-800 shadow-xs rounded-xl">
-                <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60">
-                    <h2 class="font-semibold text-gray-800 dark:text-gray-100">Recent CAPA Problems</h2>
+                <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60 flex flex-col items-center gap-3 text-center">
+                    <h2 class="text-xl sm:text-2xl font-semibold text-gray-800 dark:text-gray-100">Recent CAPA Problems</h2>
+                    <div id="dashboard-capa-status-summary" class="w-full flex justify-center">
+                        @include('pages.dashboard.partials.capa-status-summary', [
+                            'capaStatusCounts' => $capaStatusCounts ?? [],
+                            'selectedCapaStatus' => $selectedCapaStatus ?? null,
+                        ])
+                    </div>
                 </header>
+                <script>
+                    (function () {
+                        const root = document.getElementById('dashboard-capa-status-summary');
+                        if (!root) return;
+
+                        root.addEventListener('click', (event) => {
+                            const button = event.target.closest('.capa-status-filter');
+                            if (!button) return;
+
+                            const nextStatus = button.dataset.capaStatus || '';
+                            const url = new URL(window.location.href);
+                            const currentStatus = url.searchParams.get('capa_status') || '';
+
+                            if (!nextStatus || currentStatus === nextStatus) {
+                                url.searchParams.delete('capa_status');
+                            } else {
+                                url.searchParams.set('capa_status', nextStatus);
+                            }
+
+                            window.location.href = url.toString();
+                        });
+                    })();
+                </script>
                 <div class="p-3">
                     <div class="overflow-x-auto">
                         <table class="table-fixed w-full dark:text-gray-300">
@@ -346,10 +146,10 @@
                                     <th class="p-2 w-80"><div class="font-semibold text-left">Root Cause</div></th>
                                     <th class="p-2 w-80"><div class="font-semibold text-left">Action Plan</div></th>
                                     <th class="p-2 w-28"><div class="font-semibold text-left">Due Date</div></th>
+                                    <th class="p-2 w-28"><div class="font-semibold text-center">Status</div></th>
                                     <th class="p-2 w-40"><div class="font-semibold text-left">Notes</div></th>
                                     <th class="p-2 w-28"><div class="font-semibold text-left">PIC</div></th>
                                     <th class="p-2 w-16"><div class="font-semibold text-center">Sev</div></th>
-                                    <th class="p-2 w-28"><div class="font-semibold text-center">Status</div></th>
                                 </tr>
                             </thead>
                             <tbody class="text-sm font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -455,6 +255,14 @@
                                                             <div class="text-gray-800 dark:text-gray-100">{{ $action?->due_date ? $action->due_date->format('Y-m-d') : '-' }}</div>
                                                         </td>
                                                         <td class="p-2">
+                                                            <div class="text-center">
+                                                                <span class="px-2 py-0.5 rounded-full text-xs
+                                                                    {{ $actionStatusLabel === 'Closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : ($actionStatusLabel === 'In Progress' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : ($actionStatusLabel === 'Open' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200')) }}">
+                                                                    {{ $actionStatusLabel }}
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="p-2">
                                                             @php($actionNotes = $action?->keterangan ?? $action?->completion_notes)
                                                             <div class="text-gray-800 dark:text-gray-100 line-clamp-3">{{ $actionNotes ?: '-' }}</div>
                                                         </td>
@@ -468,14 +276,6 @@
                                                             <div class="text-center">
                                                                 <span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
                                                                     {{ $severityLabel }}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td class="p-2">
-                                                            <div class="text-center">
-                                                                <span class="px-2 py-0.5 rounded-full text-xs
-                                                                    {{ $actionStatusLabel === 'Closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : ($actionStatusLabel === 'In Progress' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : ($actionStatusLabel === 'Open' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200')) }}">
-                                                                    {{ $actionStatusLabel }}
                                                                 </span>
                                                             </div>
                                                         </td>

@@ -1,0 +1,48 @@
+/* Saturday (yellow) date headers: black text for readability */
+#kpi-chart-table-sync .kpi-chart-table thead th[style*="255, 255, 0"] div,
+#kpi-chart-table-sync .kpi-chart-table thead th[style*="255,255,0"] div,
+#presentation-kpi-table thead th[style*="255, 255, 0"] div,
+#presentation-kpi-table thead th[style*="255,255,0"] div,
+.p-5 table thead th[style*="255, 255, 0"] div,
+.p-5 table thead th[style*="255,255,0"] div,
+thead th.kpi-header-sat div {
+  color: #000 !important;
+}
+
+/* KPI table + chart sync area always visible */
+#kpi-chart-table-sync,
+#kpi-chart-table-sync #presentation-kpi-table {
+  display: block !important;
+  visibility: visible !important;
+}
+
+#kpi-chart-table-sync-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+#kpi-chart-table-sync .kpi-chart-table-wrap {
+  flex: 0 0 auto;
+  min-height: 280px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  position: relative;
+  box-sizing: border-box;
+}
+
+#kpi-chart-table-sync #presentation-kpi-table {
+  flex: 0 0 auto;
+  margin-top: 0 !important;
+  position: static;
+  overflow: visible;
+}
+
+#kpi-chart-table-sync .kpi-chart-table-wrap canvas {
+  display: block;
+}
+
+/* Second KPI table below the card (if any) — hidden, data stays in DOM */
+.kpi-duplicate-table-hidden {
+  display: none !important;
+}

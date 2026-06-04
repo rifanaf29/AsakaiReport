@@ -10,7 +10,12 @@
                 <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h2 class="font-semibold text-gray-800 dark:text-gray-100">KPI Actual vs Target</h2>
+                            <h2 class="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                                <span class="inline-flex shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true">
+                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                                </span>
+                                <span>KPI Actual vs Target</span>
+                            </h2>
                             <div id="presentation-subtitle" class="text-sm text-gray-500 dark:text-gray-400">
                                 {{ $selectedMonthLabel ?? '' }}{{ ($selectedMonthLabel ?? null) ? ' • ' : '' }}{{ $kpiChartMeta['template_title'] ?? 'All KPIs' }}{{ !empty($kpiChartMeta['unit']) ? ' • Unit: ' . $kpiChartMeta['unit'] : '' }}
                             </div>
@@ -47,9 +52,11 @@
                     </div>
                 </header>
                 <div class="p-5">
-                    <div class="h-[260px]">
-                        <canvas id="kpi-actual-target-chart" height="260"></canvas>
-                    </div>
+                    <div id="kpi-chart-table-sync" class="overflow-x-auto">
+                        <div id="kpi-chart-table-sync-inner">
+                            <div class="kpi-chart-table-wrap shrink-0 overflow-hidden mb-2" style="height:300px;min-height:300px;max-height:300px;box-sizing:border-box;">
+                                <canvas id="kpi-actual-target-chart" height="300" width="800"></canvas>
+                            </div>
 
                     @php
                         $kpiTableLabels = collect($kpiChartData['labels'] ?? []);
@@ -103,11 +110,12 @@
 
                         $kpiUnit = $kpiChartMeta['unit'] ?? null;
                         $showMonthlyTotals = \Illuminate\Support\Str::startsWith((string) ($kpiChartMeta['template_code'] ?? ''), 'TPL_HR_WASTE_');
-                        $formatKpiCell = function ($value) {
-                            if ($value === null || $value === '') return '';
-                            if (!is_numeric($value)) return '';
-                            $number = (float) $value;
-                            return rtrim(rtrim(number_format($number, 2, '.', ','), '0'), '.');
+                        $kpiFieldUnits = $kpiChartMeta['field_units'] ?? [];
+                        if ($kpiFieldUnits === [] && ! empty($selectedKpiDefinition?->template)) {
+                            $kpiFieldUnits = $selectedKpiDefinition->template->fields()->pluck('unit', 'field_key')->all();
+                        }
+                        $formatKpiCell = function ($value, ?string $rowLabel = null, ?string $unitOverride = null, ?string $fieldKey = null) use ($kpiUnit) {
+                            return \App\Support\KpiNumberFormat::format($value, $unitOverride ?? $kpiUnit, $rowLabel, $fieldKey);
                         };
 
                         $actualSeries = $actualSeries ?? collect();
@@ -121,13 +129,18 @@
 
                         $okCount = $statusSeries->filter(fn ($v) => $v === 'OK')->count();
                         $ngCount = $statusSeries->filter(fn ($v) => $v === 'NG')->count();
+
+                        $kpiChartMetaJs = array_merge($kpiChartMeta ?? [], [
+                            'month_label' => $selectedMonthLabel ?? null,
+                            'field_units' => $kpiFieldUnits,
+                        ]);
                     @endphp
 
-                    <div id="presentation-kpi-table" class="mt-4 overflow-x-auto">
+                            <div id="presentation-kpi-table">
                         <table class="table-auto w-full text-xs dark:text-gray-300">
                             <thead class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
                                 <tr>
-                                    <th class="p-2"><div class="font-semibold text-left">Field</div></th>
+                                    <th class="p-2"><div class="font-semibold text-left">Date</div></th>
                                     @foreach($kpiTableLabels as $label)
                                         @php
                                             try {
@@ -137,7 +150,7 @@
                                                 $dateHeaderCellStyle = $dowIso === 6
                                                     ? 'background-color: rgb(255, 255, 0);'
                                                     : ($dowIso === 7 ? 'background-color: rgb(192, 0, 0);' : '');
-                                                $dateHeaderTextClass = $dateHeaderCellStyle ? 'text-white' : '';
+                                                $dateHeaderTextClass = $dowIso === 7 ? 'text-white' : '';
                                             } catch (\Exception $e) {
                                                 $labelText = $label;
                                                 $dateHeaderCellStyle = '';
@@ -158,7 +171,10 @@
                                         $isChartField = $isDisplayOnly && $fieldKey && isset($dashboardColorMap[$fieldKey]);
                                         $chartColor = $isChartField ? $dashboardColorMap[$fieldKey] : null;
                                     @endphp
-                                    <tr @if($isChartField) style="background-color: {{ preg_replace('/^rgb\((.+)\)$/', 'rgba($1, 0.07)', $chartColor) }};" @endif>
+                                    @php
+                                        $rowFieldUnit = $fieldKey ? ($kpiFieldUnits[$fieldKey] ?? null) : null;
+                                    @endphp
+                                    <tr @if($rowFieldUnit) data-kpi-unit="{{ strtolower($rowFieldUnit) }}" @endif @if($fieldKey) data-kpi-field-key="{{ $fieldKey }}" @endif @if($isChartField) style="background-color: {{ preg_replace('/^rgb\((.+)\)$/', 'rgba($1, 0.07)', $chartColor) }};" @endif>
                                         <td class="p-2" @if($isChartField) style="border-left: 4px solid {{ $chartColor }}; padding-left: 8px;" @endif>
                                             @php
                                                 $seriesLabel = $kpiSeriesLabels[$seriesName] ?? \Illuminate\Support\Str::of($seriesName)->replace('_', ' ')->title();
@@ -197,7 +213,7 @@
                                                     @endif
                                                 @else
                                                     <div class="text-center {{ $valueTextClass }}">
-                                                        {{ $isDynamicField ? ($v ?? '') : $formatKpiCell($v) }}
+                                                        {{ is_numeric($v) ? $formatKpiCell($v, $seriesLabel, $rowFieldUnit, $fieldKey) : ($v ?? '') }}
                                                     </div>
                                                 @endif
                                             </td>
@@ -207,13 +223,24 @@
                                             @php
                                                 $isDynamicField = \Illuminate\Support\Str::startsWith($seriesName, 'field:');
                                                 $total = null;
-                                                if ($isDynamicField) {
-                                                    $total = collect($seriesValues)->filter(fn ($x) => is_numeric($x))->map(fn ($x) => (float) $x)->sum();
+                                                if ($seriesName === 'actual') {
+                                                    $totalValues = collect($seriesValues)->filter(fn ($x) => is_numeric($x));
+                                                    $total = $totalValues->isNotEmpty()
+                                                        ? $totalValues->map(fn ($x) => (float) $x)->sum()
+                                                        : null;
+                                                } elseif ($isDynamicField) {
+                                                    $totalValues = collect($seriesValues)->filter(fn ($x) => is_numeric($x));
+                                                    if ($seriesName === 'field:hasil_produksi') {
+                                                        $totalValues = $totalValues->filter(fn ($x) => (float) $x != 0.0);
+                                                    }
+                                                    $total = $totalValues->isNotEmpty()
+                                                        ? $totalValues->map(fn ($x) => (float) $x)->sum()
+                                                        : null;
                                                 }
                                             @endphp
                                             <td class="p-2 whitespace-nowrap">
                                                 <div class="text-center text-gray-800 dark:text-gray-100">
-                                                    {{ $isDynamicField && $total !== null ? $formatKpiCell($total) : '' }}
+                                                    {{ $total !== null ? $formatKpiCell($total, $seriesLabel, $rowFieldUnit, $fieldKey) : '' }}
                                                 </div>
                                             </td>
                                         @endif
@@ -231,9 +258,9 @@
                                             $unitSuffix = $kpiUnit ? ($kpiUnit === '%' ? '%' : (' ' . $kpiUnit)) : '';
                                         @endphp
                                         <div class="flex flex-wrap justify-end gap-x-4 gap-y-1">
-                                            <div><span class="font-semibold">Target</span>: {{ $formatKpiCell($targetValue) ?: '-' }}{{ $unitSuffix }}</div>
-                                            <div><span class="font-semibold">Actual Sum</span>: {{ $actualCount ? $formatKpiCell($actualSum) : '-' }}{{ $unitSuffix }}</div>
-                                            <div><span class="font-semibold">Actual Avg</span>: {{ $actualCount ? $formatKpiCell($actualAvg) : '-' }}{{ $unitSuffix }}</div>
+                                            <div><span class="font-semibold">Target</span>: {{ $formatKpiCell($targetValue, 'Target (' . ($kpiUnit ?? '') . ')') ?: '-' }}{{ $unitSuffix }}</div>
+                                            <div><span class="font-semibold">Actual Sum</span>: {{ $actualCount ? $formatKpiCell($actualSum, 'Actual (' . ($kpiUnit ?? '') . ')') : '-' }}{{ $unitSuffix }}</div>
+                                            <div><span class="font-semibold">Actual Avg</span>: {{ $actualCount ? $formatKpiCell($actualAvg, 'Actual (' . ($kpiUnit ?? '') . ')') : '-' }}{{ $unitSuffix }}</div>
                                             <div><span class="font-semibold">OK</span>: {{ $okCount }}</div>
                                             <div><span class="font-semibold">NG</span>: {{ $ngCount }}</div>
                                         </div>
@@ -242,13 +269,13 @@
                             </tfoot>
                             @endif
                         </table>
+                            </div>
+                        </div>
                     </div>
 
                     <script>
                         window.kpiActualTargetChartData = @json($kpiChartData);
-                        window.kpiActualTargetChartMeta = @json(array_merge($kpiChartMeta ?? [], [
-                            'month_label' => $selectedMonthLabel ?? null,
-                        ]));
+                        window.kpiActualTargetChartMeta = @json($kpiChartMetaJs);
                         window.kpiSeriesLabels = @json($kpiSeriesLabels ?? []);
                         window.presentationDashboardPayloadUrl = @json(route('dashboard.payload'));
                     </script>
@@ -267,6 +294,7 @@
                     const btnPrev = document.getElementById('presentation-prev');
                     const btnNext = document.getElementById('presentation-next');
                     const elTableWrapper = document.getElementById('presentation-kpi-table');
+                    let selectedCapaStatus = @json($selectedCapaStatus ?? null);
 
                     if (!elMonth || !elKpi || !btnPrev || !btnNext || !elTableWrapper) return;
 
@@ -284,11 +312,30 @@
                         return Number.isFinite(n) ? n : null;
                     };
 
-                    const formatNumber = (value) => {
+                    const resolveKpiFormatKind = (unit, rowLabel, fieldKey) => {
+                        const u = String(unit ?? '').trim().toLowerCase();
+                        const label = String(rowLabel ?? '').toLowerCase();
+                        const fk = String(fieldKey ?? '').toLowerCase();
+                        if (u === 'ppm' || label.includes('(ppm)') || /\bppm\b/.test(label)) return 'ppm';
+                        if (u === '%' || label.includes('(%)')) return 'percent';
+                        if (u === 'kg' || label.includes('(kg)') || label.includes('gram')) return 'default';
+                        if (u === 'pcs' || u === 'pc' || label.includes('(pcs)') || label.includes('(pc)')) return 'pcs';
+                        if (fk && (fk.endsWith('_pcs') || fk.endsWith('_ng') || ['actual_produksi', 'actual_ng', 'order_pcs', 'shortage_pcs'].includes(fk))) return 'pcs';
+                        return 'default';
+                    };
+
+                    const formatKpiNumber = (value, unit, rowLabel, fieldKey) => {
                         const n = Number(value);
                         if (!Number.isFinite(n)) return '';
-                        const formatted = Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n);
-                        return formatted.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+                        const kind = resolveKpiFormatKind(unit, rowLabel, fieldKey);
+                        if (kind === 'ppm' || kind === 'pcs') {
+                            return new Intl.NumberFormat('id-ID', { useGrouping: true, maximumFractionDigits: 0 }).format(Math.round(n));
+                        }
+                        if (kind === 'percent') {
+                            return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(n);
+                        }
+                        let formatted = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(n);
+                        return formatted.replace(/,00$/, '').replace(/,(\d)0$/, ',$1');
                     };
 
                     const parseLabelDate = (label) => {
@@ -325,6 +372,10 @@
                         const seriesLabels = payload?.kpiSeriesLabels || {};
                         const meta = payload?.kpiChartMeta || {};
                         const unit = meta.unit || null;
+                        const fieldUnits = meta.field_units || {};
+                        const formatNumber = (value, rowLabel = null, rowUnit = null, fieldKey = null) => {
+                            return formatKpiNumber(value, rowUnit ?? unit, rowLabel, fieldKey);
+                        };
                         const operator = meta.target_operator || 'gte';
                         const templateCode = String(meta.template_code || '');
                         const isCncWaste = templateCode === 'TPL_PD_WASTE_CNC_BENDING';
@@ -388,7 +439,7 @@
                                     const dow = dt.getDay(); // 0 Sun, 6 Sat
                                     if (dow === 6) {
                                         style = 'background-color: rgb(255, 255, 0);';
-                                        textClass = 'text-white';
+                                        textClass = '';
                                     } else if (dow === 0) {
                                         style = 'background-color: rgb(192, 0, 0);';
                                         textClass = 'text-white';
@@ -411,6 +462,15 @@
                             if ((seriesName === 'target' || seriesName === 'actual') && unit) {
                                 label = `${label} (${unit})`;
                             }
+
+                            const fieldKey = seriesName.startsWith('field:') ? seriesName.slice(6) : null;
+                            const rowUnit = fieldKey
+                                ? (fieldUnits[fieldKey] || null)
+                                : ((seriesName === 'target' || seriesName === 'actual') ? unit : null);
+                            const rowDataAttrs = [
+                                fieldKey ? `data-kpi-field-key="${escapeHtml(fieldKey)}"` : '',
+                                rowUnit ? `data-kpi-unit="${escapeHtml(String(rowUnit).toLowerCase())}"` : '',
+                            ].filter(Boolean).join(' ');
 
                             const cells = labels.map((_, idx) => {
                                 const v = values[idx];
@@ -444,8 +504,7 @@
                                     return `<td class="p-2 whitespace-nowrap ${tdClass}" style="${tdStyle}">${statusText}</td>`;
                                 }
 
-                                const isDynamicField = seriesName.startsWith('field:');
-                                const displayValue = isDynamicField ? formatNumber(v) : formatNumber(v);
+                                const displayValue = formatNumber(v, label, rowUnit, fieldKey);
                                 return `<td class="p-2 whitespace-nowrap ${tdClass}" style="${tdStyle}"><div class="text-center ${valueTextClass}">${escapeHtml(displayValue)}</div></td>`;
                             }).join('');
 
@@ -464,22 +523,27 @@
                                 const textClass = isCncTotalRow ? 'text-white' : 'text-gray-800 dark:text-gray-100';
 
                                 avgCells = `
-                                    <td class="p-2 whitespace-nowrap" style="${tdStyle}"><div class="text-center ${textClass}">${escapeHtml(avg === null ? '' : formatNumber(avg))}</div></td>
-                                    <td class="p-2 whitespace-nowrap" style="${tdStyle}"><div class="text-center ${textClass}">${escapeHtml(avgD === null ? '' : formatNumber(avgD))}</div></td>
+                                    <td class="p-2 whitespace-nowrap" style="${tdStyle}"><div class="text-center ${textClass}">${escapeHtml(avg === null ? '' : formatNumber(avg, label, rowUnit, fieldKey))}</div></td>
+                                    <td class="p-2 whitespace-nowrap" style="${tdStyle}"><div class="text-center ${textClass}">${escapeHtml(avgD === null ? '' : formatNumber(avgD, label, rowUnit, fieldKey))}</div></td>
                                 `;
                             }
 
                             let totalCell = '';
                             if (showMonthlyTotals) {
-                                if (seriesName.startsWith('field:')) {
-                                    const sum = values
-                                        .map((v) => Number(v))
-                                        .filter((n) => Number.isFinite(n))
-                                        .reduce((acc, n) => acc + n, 0);
-                                    totalCell = `<td class="p-2 whitespace-nowrap"><div class="text-center text-gray-800 dark:text-gray-100">${escapeHtml(formatNumber(sum))}</div></td>`;
-                                } else {
-                                    totalCell = `<td class="p-2 whitespace-nowrap"><div class="text-center"></div></td>`;
+                                let sum = null;
+                                if (seriesName === 'actual') {
+                                    const nums = values.map((v) => Number(v)).filter((n) => Number.isFinite(n));
+                                    sum = nums.length ? nums.reduce((acc, n) => acc + n, 0) : null;
+                                } else if (seriesName.startsWith('field:')) {
+                                    let nums = values.map((v) => Number(v)).filter((n) => Number.isFinite(n));
+                                    if (seriesName === 'field:hasil_produksi') {
+                                        nums = nums.filter((n) => n !== 0);
+                                    }
+                                    sum = nums.length ? nums.reduce((acc, n) => acc + n, 0) : null;
                                 }
+                                totalCell = sum !== null
+                                    ? `<td class="p-2 whitespace-nowrap"><div class="text-center text-gray-800 dark:text-gray-100">${escapeHtml(formatNumber(sum, label, rowUnit, fieldKey))}</div></td>`
+                                    : `<td class="p-2 whitespace-nowrap"><div class="text-center"></div></td>`;
                             }
 
                             const fieldKeyPlain = seriesName.startsWith('field:') ? seriesName.slice(6) : null;
@@ -495,7 +559,7 @@
                             const firstTdTextClass = isCncHighlight ? 'text-white' : 'text-gray-800 dark:text-gray-100';
 
                             return `
-                                <tr style="${trRowStyle}">
+                                <tr ${rowDataAttrs} style="${trRowStyle}">
                                     <td class="p-2" style="${firstTdStyle}"><div class="${firstTdTextClass}">${escapeHtml(label)}</div></td>
                                     ${cells}
                                     ${totalCell}
@@ -506,15 +570,15 @@
 
                         const bodyRows = seriesOrder.map(buildRow).join('');
 
-                        const summaryTarget = Number.isFinite(targetValue) ? `${formatNumber(targetValue)}${unitSuffix}` : `-${unitSuffix}`;
-                        const summarySum = actualNumeric.length ? `${formatNumber(actualSum)}${unitSuffix}` : `-${unitSuffix}`;
-                        const summaryAvg = actualNumeric.length && Number.isFinite(actualAvg) ? `${formatNumber(actualAvg)}${unitSuffix}` : `-${unitSuffix}`;
+                        const summaryTarget = Number.isFinite(targetValue) ? `${formatNumber(targetValue, `Target (${unit || ''})`)}${unitSuffix}` : `-${unitSuffix}`;
+                        const summarySum = actualNumeric.length ? `${formatNumber(actualSum, `Actual (${unit || ''})`)}${unitSuffix}` : `-${unitSuffix}`;
+                        const summaryAvg = actualNumeric.length && Number.isFinite(actualAvg) ? `${formatNumber(actualAvg, `Actual (${unit || ''})`)}${unitSuffix}` : `-${unitSuffix}`;
 
                         return `
                             <table class="table-auto w-full text-xs dark:text-gray-300">
                                 <thead class="text-[11px] uppercase text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50">
                                     <tr>
-                                        <th class="p-2"><div class="font-semibold text-left">Field</div></th>
+                                        <th class="p-2"><div class="font-semibold text-left">Date</div></th>
                                         ${headerCells}
                                         ${showMonthlyTotals ? '<th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Total</div></th>' : ''}
                                         ${showCncAverages ? '<th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average</div></th><th class="p-2 whitespace-nowrap"><div class="font-semibold text-center">Average/D</div></th>' : ''}
@@ -570,7 +634,12 @@
                         }
 
                         window.kpiActualTargetChartData = payload.kpiChartData;
-                        window.kpiActualTargetChartMeta = payload.kpiChartMeta;
+                        window.kpiActualTargetChartMeta = {
+                            ...(payload.kpiChartMeta || {}),
+                            field_units: payload.kpiChartMeta?.field_units
+                                || window.kpiActualTargetChartMeta?.field_units
+                                || {},
+                        };
                         window.kpiSeriesLabels = payload.kpiSeriesLabels || {};
 
                         if (elSubtitle) {
@@ -594,6 +663,15 @@
                         if (elCapaWrapper && typeof payload?.capaTableHtml === 'string') {
                             elCapaWrapper.innerHTML = payload.capaTableHtml;
                         }
+
+                        const elCapaStatusSummary = document.getElementById('presentation-capa-status-summary');
+                        if (elCapaStatusSummary && typeof payload?.capaStatusSummaryHtml === 'string') {
+                            elCapaStatusSummary.innerHTML = payload.capaStatusSummaryHtml;
+                        }
+
+                        if (typeof payload?.selectedCapaStatus !== 'undefined') {
+                            selectedCapaStatus = payload.selectedCapaStatus || null;
+                        }
                     };
 
                     const fetchAndApply = async (options = {}) => {
@@ -604,6 +682,7 @@
                             if (elDept) params.set('department', elDept.value);
                             if (elMonth.value) params.set('month', elMonth.value);
                             if (!options.omitKpi && elKpi.value) params.set('kpi_definition_id', elKpi.value);
+                            if (selectedCapaStatus) params.set('capa_status', selectedCapaStatus);
 
                             const res = await fetch(`${payloadUrl}?${params.toString()}`, {
                                 headers: {
@@ -621,6 +700,16 @@
                             inFlight = false;
                         }
                     };
+
+                    document.addEventListener('click', (event) => {
+                        const button = event.target.closest('#presentation-capa-status-summary .capa-status-filter');
+                        if (!button) return;
+
+                        event.preventDefault();
+                        const nextStatus = button.dataset.capaStatus || null;
+                        selectedCapaStatus = (!nextStatus || selectedCapaStatus === nextStatus) ? null : nextStatus;
+                        fetchAndApply();
+                    });
 
                     const moveKpi = (delta) => {
                         const selected = toIntOrNull(elKpi.value);
@@ -652,8 +741,14 @@
 
             <!-- CAPA Problems Table -->
             <div class="col-span-full bg-white dark:bg-gray-800 shadow-xs rounded-xl">
-                <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60">
-                    <h2 class="font-semibold text-gray-800 dark:text-gray-100">Recent CAPA Problems</h2>
+                <header class="px-5 py-4 border-b border-gray-100 dark:border-gray-700/60 flex flex-col items-center gap-3 text-center">
+                    <h2 class="text-xl sm:text-2xl font-semibold text-gray-800 dark:text-gray-100">Recent CAPA Problems</h2>
+                    <div id="presentation-capa-status-summary" class="w-full flex justify-center">
+                        @include('pages.dashboard.partials.capa-status-summary', [
+                            'capaStatusCounts' => $capaStatusCounts ?? [],
+                            'selectedCapaStatus' => $selectedCapaStatus ?? null,
+                        ])
+                    </div>
                 </header>
                 <div id="presentation-capa-table">
                     @include('pages.dashboard.partials.capa-problems-table', ['capaProblems' => $capaProblems])

@@ -15,6 +15,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
+use App\Services\KpiRejectionWasteNgSync;
 use Illuminate\Support\Facades\Http;
 
 class KpiEntryController extends Controller
@@ -646,6 +647,11 @@ class KpiEntryController extends Controller
         $dynamicFields = $validated['dynamic_fields'] ?? [];
         $dynamicFields = $this->enrichDynamicFieldsForTemplate($template, $dynamicFields);
         $validated['dynamic_fields'] = $dynamicFields;
+
+        if ($error = $this->validateRejectionHasilProduksi($template, $dynamicFields, 'dynamic_fields.hasil_produksi')) {
+            return back()->withInput()->withErrors(['dynamic_fields.hasil_produksi' => $error]);
+        }
+
         if ($template->actual_mode === 'aggregated') {
             $computedActual = $this->computeAggregatedActual($template, $dynamicFields);
             if ($computedActual === null) {
@@ -708,6 +714,8 @@ class KpiEntryController extends Controller
                 'dynamic_fields' => $validated['dynamic_fields'] ?? null,
                 'created_by' => $user->id,
             ]);
+
+            $this->syncRejectionHasilProduksiIfNeeded($template, $validated['entry_date'], $validated['dynamic_fields'] ?? []);
 
             // Create CAPA if data is provided
             if ($hasCapaData && !empty($validated['capa_areas'])) {
@@ -934,6 +942,11 @@ class KpiEntryController extends Controller
 
             $dynamicFields = $this->enrichDynamicFieldsForTemplate($template, $dynamicFields);
 
+            if ($error = $this->validateRejectionHasilProduksi($template, $dynamicFields, "entries.$kpiId.dynamic_fields.hasil_produksi")) {
+                $errors["entries.$kpiId.dynamic_fields.hasil_produksi"] = $error;
+                continue;
+            }
+
             // Resolve target: skip for display_only templates.
             $targetValue = null;
             if ($template->target_mode !== 'display_only') {
@@ -1044,6 +1057,12 @@ class KpiEntryController extends Controller
 
                 $entry = KpiEntry::create($entryData);
                 $createdCount++;
+
+                $this->syncRejectionHasilProduksiIfNeeded(
+                    $kpiDefinitions->get($kpiId)?->template,
+                    $entryDate,
+                    is_array($entryData['dynamic_fields'] ?? null) ? $entryData['dynamic_fields'] : []
+                );
 
                 if ($this->hasCapaData($capaAreas)) {
                     foreach ($capaAreas as $areaData) {
@@ -1282,6 +1301,10 @@ class KpiEntryController extends Controller
         }
         $validated['dynamic_fields'] = $dynamicFields;
 
+        if ($entry->template && ($error = $this->validateRejectionHasilProduksi($entry->template, $dynamicFields, 'dynamic_fields.hasil_produksi'))) {
+            return back()->withInput()->withErrors(['dynamic_fields.hasil_produksi' => $error]);
+        }
+
         if ($entry->template && $entry->template->target_mode === 'display_only') {
             $validated['actual'] = null;
             $validated['target'] = null;
@@ -1339,6 +1362,12 @@ class KpiEntryController extends Controller
                 'notes' => $validated['notes'],
                 'dynamic_fields' => $validated['dynamic_fields'] ?? null,
             ]);
+
+            $this->syncRejectionHasilProduksiIfNeeded(
+                $entry->template,
+                $validated['entry_date'],
+                is_array($validated['dynamic_fields'] ?? null) ? $validated['dynamic_fields'] : []
+            );
 
             // Delete existing CAPA data if any
             $entry->capaAreas()->each(function ($capaArea) {
@@ -1831,6 +1860,42 @@ class KpiEntryController extends Controller
         }
 
         return $dynamicFields;
+    }
+
+    private function validateRejectionHasilProduksi(KpiTemplate $template, array $dynamicFields, string $errorKey): ?string
+    {
+        if ((string) ($template->code ?? '') !== KpiRejectionWasteNgSync::REJECTION_TEMPLATE) {
+            return null;
+        }
+
+        $hasAny = false;
+        foreach (['actual_ng', 'actual_produksi', 'hasil_produksi'] as $key) {
+            $val = $dynamicFields[$key] ?? null;
+            if ($val !== null && $val !== '') {
+                $hasAny = true;
+                break;
+            }
+        }
+
+        if (! $hasAny) {
+            return null;
+        }
+
+        $kgRaw = $dynamicFields['hasil_produksi'] ?? null;
+        if ($kgRaw === null || $kgRaw === '' || ! is_numeric($kgRaw) || (float) $kgRaw <= 0) {
+            return 'Hasil Produksi (Kg) wajib diisi dan harus lebih dari 0 untuk Rejection in Proses.';
+        }
+
+        return null;
+    }
+
+    private function syncRejectionHasilProduksiIfNeeded(?KpiTemplate $template, string $entryDate, array $dynamicFields): void
+    {
+        if (! $template || (string) ($template->code ?? '') !== KpiRejectionWasteNgSync::REJECTION_TEMPLATE) {
+            return;
+        }
+
+        KpiRejectionWasteNgSync::syncFromDynamicFields($entryDate, $dynamicFields);
     }
 
 }

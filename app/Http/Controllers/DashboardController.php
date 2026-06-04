@@ -8,7 +8,9 @@ use App\Models\KpiEntry;
 use App\Models\KpiMonthlyTarget;
 use App\Models\KpiDefinition;
 use App\Models\CapaProblem;
+use App\Services\KpiRejectionWasteNgSync;
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
@@ -46,8 +48,16 @@ class DashboardController extends Controller
             }
         }
 
+        $capaProblemsAll = $data['capaProblemsAll'] ?? collect();
+        $capaProblems = $data['capaProblems'] ?? $capaProblemsAll;
+        $selectedCapaStatus = $data['selectedCapaStatus'] ?? null;
+        $capaStatusCounts = $this->computeCapaActionStatusCounts($capaProblemsAll);
         $capaTableHtml = view('pages.dashboard.partials.capa-problems-table', [
-            'capaProblems' => $data['capaProblems'] ?? collect(),
+            'capaProblems' => $capaProblems,
+        ])->render();
+        $capaStatusSummaryHtml = view('pages.dashboard.partials.capa-status-summary', [
+            'capaStatusCounts' => $capaStatusCounts,
+            'selectedCapaStatus' => $selectedCapaStatus,
         ])->render();
 
         return response()->json([
@@ -60,6 +70,8 @@ class DashboardController extends Controller
             'kpiChartMeta' => $data['kpiChartMeta'] ?? [],
             'kpiSeriesLabels' => $data['kpiSeriesLabels'] ?? [],
             'capaTableHtml' => $capaTableHtml,
+            'capaStatusSummaryHtml' => $capaStatusSummaryHtml,
+            'selectedCapaStatus' => $selectedCapaStatus,
         ]);
     }
 
@@ -220,6 +232,11 @@ class DashboardController extends Controller
                     $dynamicByDate[Carbon::parse($entry->entry_date)->toDateString()] = $entry->dynamic_fields ?? [];
                 }
 
+                $isHrWaste = Str::startsWith((string) ($selectedTemplate->code ?? ''), 'TPL_HR_WASTE_');
+                $rejectionHasilMap = $isHrWaste
+                    ? KpiRejectionWasteNgSync::rejectionHasilProduksiByDate($monthStart, $monthEnd)
+                    : [];
+
                 foreach ($templateFields as $field) {
                     $seriesKey = 'field:' . $field->field_key;
                     $kpiSeriesLabels[$seriesKey] = $field->field_name;
@@ -248,6 +265,13 @@ class DashboardController extends Controller
                             $c5 = (isset($fieldsForDate['ot_charge_pd5']) && is_numeric($fieldsForDate['ot_charge_pd5'])) ? (float) $fieldsForDate['ot_charge_pd5'] : 0.0;
                             $sum = $c1 + $c2 + $c3 + $c4 + $c5;
                             $value = $sum !== 0.0 ? $sum : null;
+                        }
+
+                        if ($isHrWaste && $field->field_key === 'hasil_produksi') {
+                            $missing = $value === null || $value === '' || ! is_numeric($value) || (float) $value <= 0;
+                            if ($missing && isset($rejectionHasilMap[$dateKey])) {
+                                $value = $rejectionHasilMap[$dateKey];
+                            }
                         }
 
                         $fieldValues[] = $value;
@@ -314,6 +338,10 @@ class DashboardController extends Controller
             ->limit(15)
             ->get();
 
+        $selectedCapaStatus = $this->resolveCapaStatusFilter($request);
+        $capaStatusCounts = $this->computeCapaActionStatusCounts($capaProblems);
+        $capaProblemsForTable = $this->filterCapaProblemsByActionStatus($capaProblems, $selectedCapaStatus);
+
         return [
             'departments' => $departments,
             'kpis' => $kpis,
@@ -327,8 +355,84 @@ class DashboardController extends Controller
             'kpiChartData' => $kpiChartData,
             'kpiChartMeta' => $kpiChartMeta,
             'kpiSeriesLabels' => $kpiSeriesLabels,
-            'capaProblems' => $capaProblems,
+            'capaProblems' => $capaProblemsForTable,
+            'capaProblemsAll' => $capaProblems,
+            'capaStatusCounts' => $capaStatusCounts,
+            'selectedCapaStatus' => $selectedCapaStatus,
         ];
+    }
+
+    private function resolveCapaStatusFilter(Request $request): ?string
+    {
+        $status = $request->input('capa_status');
+        if ($status === null || $status === '') {
+            return null;
+        }
+
+        return in_array($status, ['open', 'progress', 'close'], true) ? $status : null;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\CapaProblem>  $capaProblems
+     */
+    private function filterCapaProblemsByActionStatus($capaProblems, ?string $status)
+    {
+        if (!$status) {
+            return $capaProblems;
+        }
+
+        return $capaProblems
+            ->map(function ($problem) use ($status) {
+                $copy = clone $problem;
+                $filteredCauses = collect($problem->causes ?? [])
+                    ->map(function ($cause) use ($status) {
+                        $causeCopy = clone $cause;
+                        $plans = collect($cause->actionPlans ?? [])
+                            ->filter(fn ($action) => $action->status === $status)
+                            ->values();
+                        $causeCopy->setRelation('actionPlans', $plans);
+
+                        return $causeCopy;
+                    })
+                    ->filter(fn ($cause) => ($cause->actionPlans ?? collect())->isNotEmpty())
+                    ->values();
+
+                $copy->setRelation('causes', $filteredCauses);
+
+                return $copy;
+            })
+            ->filter(fn ($problem) => ($problem->causes ?? collect())->isNotEmpty())
+            ->values();
+    }
+
+    /**
+     * Count action-plan statuses for CAPA rows shown on the dashboard table.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\CapaProblem>  $capaProblems
+     * @return array{open: int, progress: int, close: int}
+     */
+    private function computeCapaActionStatusCounts($capaProblems): array
+    {
+        $counts = ['open' => 0, 'progress' => 0, 'close' => 0];
+
+        foreach ($capaProblems as $problem) {
+            $actions = collect();
+            foreach ($problem->causes ?? [] as $cause) {
+                $actions = $actions->merge($cause->actionPlans ?? []);
+            }
+            if ($actions->isEmpty()) {
+                $actions = collect($problem->actionPlans ?? []);
+            }
+
+            foreach ($actions as $action) {
+                $status = $action->status;
+                if (isset($counts[$status])) {
+                    $counts[$status]++;
+                }
+            }
+        }
+
+        return $counts;
     }
 
     /**

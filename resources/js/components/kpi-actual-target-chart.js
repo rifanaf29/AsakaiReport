@@ -8,6 +8,7 @@ import {
   Filler,
   PointElement,
   LinearScale,
+  CategoryScale,
   TimeScale,
   Tooltip,
   Legend,
@@ -17,17 +18,36 @@ import 'chartjs-adapter-moment';
 
 // Import utilities
 import { getCssVariable, adjustColorOpacity } from '../utils';
+import {
+  labelsToDayNumbers,
+  KPI_CHART_PAD_LEFT,
+  kpiChartPadRight,
+  kpiTableXScale,
+  seriesToIndexedPoints,
+  kpiTableGridPlugin,
+  kpiSnapPointsPlugin,
+  kpiValueLabelsPlugin,
+  kpiHtmlChromePlugin,
+  resizeChartToTableWidth,
+} from './kpi-chart-axis';
+import { formatKpiNumber } from './kpi-number-format.js';
 
-Chart.register(BarController, BarElement, LineController, LineElement, Filler, PointElement, LinearScale, TimeScale, Tooltip, Legend, Title);
+Chart.register(kpiTableGridPlugin, kpiSnapPointsPlugin, kpiValueLabelsPlugin, kpiHtmlChromePlugin);
+
+Chart.register(BarController, BarElement, LineController, LineElement, Filler, PointElement, LinearScale, CategoryScale, TimeScale, Tooltip, Legend, Title);
+
+const kpiCategoryXScale = (dayCount) => kpiTableXScale(dayCount);
+
+const mapDatasetsIndexed = (datasets) => datasets.map((ds) => ({
+  ...ds,
+  data: seriesToIndexedPoints(ds.data),
+}));
 
 const formatKpiValue = (value, unit) => {
   if (value === null || value === undefined || value === '') return '-';
 
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) return '-';
-  const formatted = Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 2,
-  }).format(numericValue);
+  const formatted = formatKpiNumber(value, { unit });
+  if (!formatted) return '-';
 
   if (!unit) return formatted;
   if (unit === '%') return `${formatted}%`;
@@ -50,6 +70,7 @@ const kpiActualTargetChart = () => {
   const chartPayload = window.kpiActualTargetChartData || { labels: [], actual: [], target: [] };
   const getMeta = () => window.kpiActualTargetChartMeta || { template_title: 'All Templates', unit: null, month_label: null };
   const labels = chartPayload.labels || [];
+  const dayLabels = labelsToDayNumbers(labels);
   const actual = chartPayload.actual || [];
   const target = chartPayload.target || [];
   const getUnit = () => getMeta().unit;
@@ -133,9 +154,9 @@ const kpiActualTargetChart = () => {
 
     window.kpiActualTargetChartInstance = new Chart(ctx, {
       type: 'line',
-      data: { labels, datasets: displayDatasets },
+      data: { labels: dayLabels, datasets: mapDatasetsIndexed(displayDatasets) },
       options: {
-        layout: { padding: { top: 6, bottom: 10, left: 8, right: 8 } },
+        layout: { padding: { top: 36, bottom: 6, left: KPI_CHART_PAD_LEFT, right: kpiChartPadRight(0) } },
         scales: {
           y: {
             beginAtZero: true,
@@ -147,23 +168,15 @@ const kpiActualTargetChart = () => {
             },
             grid: { color: darkMode ? gridColor.dark : gridColor.light },
           },
-          x: {
-            type: 'time',
-            time: { parser: 'MM-DD-YYYY', unit: 'day', displayFormats: { day: 'MMM D' } },
-            border: { display: false },
-            grid: { display: false },
-            ticks: { color: darkMode ? textColor.dark : textColor.light, maxRotation: 0 },
-          },
+          x: kpiCategoryXScale(dayLabels.length),
         },
         plugins: {
-          title: {
-            display: true,
-            text: getMonthLabel() ? [getMeta().template_title || '', getMonthLabel()] : (getMeta().template_title || ''),
-            color: '#000000',
-            font: { size: 20, weight: '700' },
-            padding: { top: 6, bottom: 12 },
-          },
-          legend: { display: true },
+          title: { display: false },
+          legend: { display: true, position: 'bottom', align: 'start' },
+          kpiTableColumnGrid: true,
+          kpiSnapPointsToTable: true,
+          kpiValueLabels: true,
+          kpiHtmlChrome: true,
           tooltip: {
             callbacks: {
               label: (context) => {
@@ -173,10 +186,11 @@ const kpiActualTargetChart = () => {
             },
           },
         },
-        responsive: true,
+        responsive: false,
         maintainAspectRatio: false,
       },
     });
+    window.kpiActualTargetChartInstance.__kpiDayCount = dayLabels.length;
     return;
   }
 
@@ -286,12 +300,13 @@ const kpiActualTargetChart = () => {
         borderColor: targetColor,
         backgroundColor: adjustColorOpacity(targetColor, 0.18),
         fill: false,
-        showLine: false,
-        borderWidth: 0,
+        borderWidth: 2,
         pointRadius: 3,
         pointHoverRadius: 5,
         pointBackgroundColor: targetColor,
         pointHoverBackgroundColor: targetColor,
+        tension: 0.2,
+        spanGaps: true,
         clip: 20,
         yAxisID: 'yKg',
       },
@@ -301,12 +316,13 @@ const kpiActualTargetChart = () => {
         borderColor: actualColor,
         backgroundColor: adjustColorOpacity(actualColor, 0.12),
         fill: false,
-        showLine: false,
-        borderWidth: 0,
+        borderWidth: 2,
         pointRadius: 3,
         pointHoverRadius: 5,
         pointBackgroundColor: actualColor,
         pointHoverBackgroundColor: actualColor,
+        tension: 0.2,
+        spanGaps: true,
         clip: 20,
         yAxisID: 'yPct',
       },
@@ -345,40 +361,23 @@ const kpiActualTargetChart = () => {
   const chart = new Chart(ctx, {
     type: isPdMpOt ? 'bar' : 'line',
     data: {
-      labels,
-      datasets,
+      labels: dayLabels,
+      datasets: mapDatasetsIndexed(datasets),
     },
     options: {
       layout: {
         padding: {
-          top: 6,
-          bottom: 10,
-          left: 8,
-          right: 8,
+          top: 36,
+          bottom: 6,
+          left: KPI_CHART_PAD_LEFT,
+          right: kpiChartPadRight(0),
         },
       },
       scales: isPdMpOt
         ? {
           x: {
-            type: 'time',
+            ...kpiCategoryXScale(dayLabels.length),
             stacked: true,
-            time: {
-              parser: 'MM-DD-YYYY',
-              unit: 'day',
-              displayFormats: {
-                day: 'MMM D',
-              },
-            },
-            border: {
-              display: false,
-            },
-            grid: {
-              display: false,
-            },
-            ticks: {
-              color: darkMode ? textColor.dark : textColor.light,
-              maxRotation: 0,
-            },
           },
           yRp: {
             beginAtZero: true,
@@ -387,6 +386,9 @@ const kpiActualTargetChart = () => {
             border: { display: false },
             ticks: {
               maxTicksLimit: 6,
+              align: 'outer',
+              padding: 4,
+              maxRotation: 0,
               callback: (value) => formatKpiValue(value, 'Rp'),
               color: darkMode ? textColor.dark : textColor.light,
             },
@@ -394,7 +396,7 @@ const kpiActualTargetChart = () => {
               color: darkMode ? gridColor.dark : gridColor.light,
             },
             title: {
-              display: true,
+              display: false,
               text: 'Unit: Rp',
               color: darkMode ? textColor.dark : textColor.light,
             },
@@ -409,11 +411,14 @@ const kpiActualTargetChart = () => {
             },
             ticks: {
               maxTicksLimit: 6,
+              align: 'outer',
+              padding: 4,
+              maxRotation: 0,
               callback: (value) => formatKpiValue(value, 'Orang'),
               color: darkMode ? textColor.dark : textColor.light,
             },
             title: {
-              display: true,
+              display: false,
               text: 'Unit: Orang',
               color: darkMode ? textColor.dark : textColor.light,
             },
@@ -428,6 +433,9 @@ const kpiActualTargetChart = () => {
             border: { display: false },
             ticks: {
               maxTicksLimit: 6,
+              align: 'outer',
+              padding: 4,
+              maxRotation: 0,
               callback: (value) => formatKpiValue(value, 'kg'),
               color: darkMode ? textColor.dark : textColor.light,
             },
@@ -435,7 +443,7 @@ const kpiActualTargetChart = () => {
               color: darkMode ? gridColor.dark : gridColor.light,
             },
             title: {
-              display: true,
+              display: false,
               text: 'Unit: kg',
               color: darkMode ? textColor.dark : textColor.light,
             },
@@ -451,35 +459,19 @@ const kpiActualTargetChart = () => {
             },
             ticks: {
               maxTicksLimit: 6,
+              align: 'outer',
+              padding: 4,
+              maxRotation: 0,
               callback: (value) => formatKpiValue(value, '%'),
               color: darkMode ? textColor.dark : textColor.light,
             },
             title: {
-              display: true,
+              display: false,
               text: 'Unit: %',
               color: darkMode ? textColor.dark : textColor.light,
             },
           },
-          x: {
-            type: 'time',
-            time: {
-              parser: 'MM-DD-YYYY',
-              unit: 'day',
-              displayFormats: {
-                day: 'MMM D',
-              },
-            },
-            border: {
-              display: false,
-            },
-            grid: {
-              display: false,
-            },
-            ticks: {
-              color: darkMode ? textColor.dark : textColor.light,
-              maxRotation: 0,
-            },
-          },
+          x: kpiCategoryXScale(dayLabels.length),
         }
         : {
           y: {
@@ -489,6 +481,9 @@ const kpiActualTargetChart = () => {
             },
             ticks: {
               maxTicksLimit: 6,
+              align: 'outer',
+              padding: 4,
+              maxRotation: 0,
               callback: (value) => formatKpiValue(value, getUnit()),
               color: darkMode ? textColor.dark : textColor.light,
             },
@@ -496,53 +491,36 @@ const kpiActualTargetChart = () => {
               color: darkMode ? gridColor.dark : gridColor.light,
             },
             title: {
-              display: Boolean(getUnit()),
+              display: false,
               text: getUnit() ? `Unit: ${getUnit()}` : '',
               color: darkMode ? textColor.dark : textColor.light,
             },
           },
-          x: {
-            type: 'time',
-            time: {
-              parser: 'MM-DD-YYYY',
-              unit: 'day',
-              displayFormats: {
-                day: 'MMM D',
-              },
-            },
-            border: {
-              display: false,
-            },
-            grid: {
-              display: false,
-            },
-            ticks: {
-              color: darkMode ? textColor.dark : textColor.light,
-              maxRotation: 0,
-            },
-          },
+          x: kpiCategoryXScale(dayLabels.length),
         },
       plugins: {
-        title: {
-          display: true,
-          text: getMonthLabel() ? [getMeta().template_title || 'All Templates', getMonthLabel()] : (getMeta().template_title || 'All Templates'),
-          color: '#000000',
-          font: {
-            size: 20,
-            weight: '700',
-          },
-          padding: {
-            top: 6,
-            bottom: 12,
-          },
-        },
+        title: { display: false },
         legend: {
           display: true,
+          position: 'bottom',
+          align: 'start',
           labels: {
             color: darkMode ? textColor.dark : textColor.light,
+            boxWidth: 14,
+            padding: 10,
           },
         },
+        kpiTableColumnGrid: true,
+        kpiSnapPointsToTable: true,
+        kpiValueLabels: true,
+        kpiHtmlChrome: true,
         tooltip: {
+          mode: 'index',
+          intersect: false,
+          axis: 'x',
+          animation: { duration: 0 },
+          caretPadding: 8,
+          padding: 10,
           callbacks: {
             title: (items) => (items && items[0] ? items[0].label : ''),
             label: (context) => {
@@ -570,14 +548,18 @@ const kpiActualTargetChart = () => {
       },
       interaction: {
         intersect: false,
-        mode: 'nearest',
+        mode: 'index',
+        axis: 'x',
       },
       animation: {
         duration: 200,
       },
+      responsive: false,
       maintainAspectRatio: false,
     },
   });
+
+  chart.__kpiDayCount = dayLabels.length;
 
   document.addEventListener('darkMode', (e) => {
     const { mode } = e.detail;

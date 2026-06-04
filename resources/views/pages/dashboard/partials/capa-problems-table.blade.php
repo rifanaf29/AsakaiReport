@@ -9,10 +9,10 @@
                     <th class="p-2 w-80"><div class="font-semibold text-left">Root Cause</div></th>
                     <th class="p-2 w-80"><div class="font-semibold text-left">Action Plan</div></th>
                     <th class="p-2 w-28"><div class="font-semibold text-left">Due Date</div></th>
+                    <th class="p-2 w-28"><div class="font-semibold text-center">Status</div></th>
                     <th class="p-2 w-40"><div class="font-semibold text-left">Notes</div></th>
                     <th class="p-2 w-28"><div class="font-semibold text-left">PIC</div></th>
                     <th class="p-2 w-16"><div class="font-semibold text-center">Sev</div></th>
-                    <th class="p-2 w-28"><div class="font-semibold text-center">Status</div></th>
                 </tr>
             </thead>
             <tbody class="text-sm font-medium divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -118,6 +118,14 @@
                                             <div class="text-gray-800 dark:text-gray-100">{{ $action?->due_date ? $action->due_date->format('Y-m-d') : '-' }}</div>
                                         </td>
                                         <td class="p-2">
+                                            <div class="text-center">
+                                                <span class="px-2 py-0.5 rounded-full text-xs
+                                                    {{ $actionStatusLabel === 'Closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : ($actionStatusLabel === 'In Progress' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : ($actionStatusLabel === 'Open' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200')) }}">
+                                                    {{ $actionStatusLabel }}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td class="p-2">
                                             @php($actionNotes = $action?->keterangan ?? $action?->completion_notes)
                                             <div class="text-gray-800 dark:text-gray-100 line-clamp-3">{{ $actionNotes ?: '-' }}</div>
                                         </td>
@@ -131,14 +139,6 @@
                                             <div class="text-center">
                                                 <span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
                                                     {{ $severityLabel }}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td class="p-2">
-                                            <div class="text-center">
-                                                <span class="px-2 py-0.5 rounded-full text-xs
-                                                    {{ $actionStatusLabel === 'Closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : ($actionStatusLabel === 'In Progress' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : ($actionStatusLabel === 'Open' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200')) }}">
-                                                    {{ $actionStatusLabel }}
                                                 </span>
                                             </div>
                                         </td>
