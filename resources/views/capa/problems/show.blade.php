@@ -252,6 +252,10 @@
             document.getElementById('causes-container').appendChild(form);
         }
 
+        // Built from the route helper so the app's base path (e.g. /gmu/asakai) is never lost.
+        const causeUrl = (id) => '{{ route("capa.causes.update", ["cause" => "__ID__"]) }}'.replace('__ID__', id);
+        const actionUrl = (id) => '{{ route("capa.action-plans.update", ["action_plan" => "__ID__"]) }}'.replace('__ID__', id);
+
         /** POST to a CAPA endpoint and surface the server's validation message on failure. */
         async function capaSubmit(url, body) {
             try {
@@ -300,7 +304,7 @@
             const formData = new FormData(event.target);
             formData.append('_method', 'PUT');
 
-            if (await capaSubmit(`/capa/causes/${causeId}`, formData)) {
+            if (await capaSubmit(causeUrl(causeId), formData)) {
                 alert('Cause updated successfully');
             }
         }
@@ -309,7 +313,7 @@
             if (!confirm('Are you sure you want to delete this cause and all its action plans?')) return;
 
             const body = new URLSearchParams({ '_method': 'DELETE' });
-            if (await capaSubmit(`/capa/causes/${causeId}`, body)) {
+            if (await capaSubmit(causeUrl(causeId), body)) {
                 location.reload();
             }
         }
@@ -373,7 +377,7 @@
             const formData = new FormData(event.target);
             formData.append('_method', 'PUT');
 
-            if (await capaSubmit(`/capa/action-plans/${actionId}`, formData)) {
+            if (await capaSubmit(actionUrl(actionId), formData)) {
                 alert('Action plan updated successfully');
                 location.reload();
             }
@@ -383,7 +387,7 @@
             if (!confirm('Are you sure you want to delete this action plan?')) return;
 
             const body = new URLSearchParams({ '_method': 'DELETE' });
-            if (await capaSubmit(`/capa/action-plans/${actionId}`, body)) {
+            if (await capaSubmit(actionUrl(actionId), body)) {
                 location.reload();
             }
         }
