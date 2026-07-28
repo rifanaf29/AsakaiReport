@@ -230,19 +230,24 @@
     if (typeof point === "object" && point.y != null) return Number(point.y);
     return Number(point);
   };
-  var niceCeil = (value) => {
-    if (!Number.isFinite(value) || value <= 0) return 10;
-    const exp = Math.pow(10, Math.floor(Math.log10(value)));
-    const n = value / exp;
-    const nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
-    return nice * exp * 1.1;
+  var NICE_STEP_MULTIPLES = [1, 2, 2.5, 5, 10];
+  var TARGET_TICK_COUNT = 5;
+  var AXIS_HEADROOM = 1.05;
+  var niceIntegerStep = (span) => {
+    const rough = span / TARGET_TICK_COUNT;
+    if (!Number.isFinite(rough) || rough <= 0) return 1;
+    const exp = Math.pow(10, Math.floor(Math.log10(rough)));
+    const multiple = NICE_STEP_MULTIPLES.find((m) => m * exp >= rough) ?? 10;
+    return Math.max(Math.ceil(multiple * exp), 1);
   };
   var computeAxisMax = (values) => {
     const nums = values.filter((v) => Number.isFinite(v) && v >= 0);
     if (!nums.length) return void 0;
     const rawMax = Math.max(...nums);
-    if (rawMax <= 0) return niceCeil(10);
-    return niceCeil(rawMax);
+    if (rawMax <= 0) return 10;
+    const span = rawMax * AXIS_HEADROOM;
+    const step = niceIntegerStep(span);
+    return Math.max(step * Math.ceil(span / step), step);
   };
   var applySensibleYScale = (chart) => {
     if (!chart?.options?.scales || !chart.data?.datasets) return;
@@ -607,6 +612,7 @@
       scale.ticks.padding = 2;
       scale.ticks.maxRotation = 0;
       scale.ticks.autoSkip = true;
+      scale.ticks.precision = 0;
       if (!scale.ticks.font || typeof scale.ticks.font !== "object") scale.ticks.font = {};
       scale.ticks.font.size = 10;
       if (!scale.grid) scale.grid = {};
@@ -658,7 +664,8 @@
         crossAlign: scale.position === "right" ? "near" : "far",
         padding: 2,
         maxRotation: 0,
-        autoSkip: scale.ticks?.autoSkip ?? true
+        autoSkip: scale.ticks?.autoSkip ?? true,
+        precision: 0
       }
     };
     if (scale.title) {

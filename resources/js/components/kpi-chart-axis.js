@@ -86,23 +86,34 @@ const readDataPointY = (point) => {
   return Number(point);
 };
 
-const niceCeil = (value) => {
-  if (!Number.isFinite(value) || value <= 0) return 10;
-  const exp = Math.pow(10, Math.floor(Math.log10(value)));
-  const n = value / exp;
-  const nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
-  return nice * exp * 1.1;
+const NICE_STEP_MULTIPLES = [1, 2, 2.5, 5, 10];
+const TARGET_TICK_COUNT = 5;
+const AXIS_HEADROOM = 1.05;
+
+/** Whole-number step (never below 1) so every tick from 0 to max lands on an integer. */
+const niceIntegerStep = (span) => {
+  const rough = span / TARGET_TICK_COUNT;
+  if (!Number.isFinite(rough) || rough <= 0) return 1;
+
+  const exp = Math.pow(10, Math.floor(Math.log10(rough)));
+  const multiple = NICE_STEP_MULTIPLES.find((m) => m * exp >= rough) ?? 10;
+  return Math.max(Math.ceil(multiple * exp), 1);
 };
 
-/** Y-axis max from highest plotted value (+ headroom). Card height stays fixed; scale fits all peaks. */
+/**
+ * Y-axis max from highest plotted value (+ headroom), snapped to a whole multiple of an
+ * integer step so Chart.js never labels the axis with decimals.
+ */
 export const computeAxisMax = (values) => {
   const nums = values.filter((v) => Number.isFinite(v) && v >= 0);
   if (!nums.length) return undefined;
 
   const rawMax = Math.max(...nums);
-  if (rawMax <= 0) return niceCeil(10);
+  if (rawMax <= 0) return 10;
 
-  return niceCeil(rawMax);
+  const span = rawMax * AXIS_HEADROOM;
+  const step = niceIntegerStep(span);
+  return Math.max(step * Math.ceil(span / step), step);
 };
 
 export const applySensibleYScale = (chart) => {
@@ -555,6 +566,7 @@ export const applyYAxisTickLayout = (chart) => {
     scale.ticks.padding = 2;
     scale.ticks.maxRotation = 0;
     scale.ticks.autoSkip = true;
+    scale.ticks.precision = 0;
     if (!scale.ticks.font || typeof scale.ticks.font !== 'object') scale.ticks.font = {};
     scale.ticks.font.size = 10;
 
@@ -616,6 +628,7 @@ const buildYScaleConfig = (scale) => {
       padding: 2,
       maxRotation: 0,
       autoSkip: scale.ticks?.autoSkip ?? true,
+      precision: 0,
     },
   };
   if (scale.title) {

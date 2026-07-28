@@ -163,6 +163,7 @@ const kpiActualTargetChart = () => {
             border: { display: false },
             ticks: {
               maxTicksLimit: 6,
+              precision: 0,
               callback: (value) => formatKpiValue(value, getUnit()),
               color: darkMode ? textColor.dark : textColor.light,
             },
@@ -386,6 +387,7 @@ const kpiActualTargetChart = () => {
             border: { display: false },
             ticks: {
               maxTicksLimit: 6,
+              precision: 0,
               align: 'outer',
               padding: 4,
               maxRotation: 0,
@@ -411,6 +413,7 @@ const kpiActualTargetChart = () => {
             },
             ticks: {
               maxTicksLimit: 6,
+              precision: 0,
               align: 'outer',
               padding: 4,
               maxRotation: 0,
@@ -433,6 +436,7 @@ const kpiActualTargetChart = () => {
             border: { display: false },
             ticks: {
               maxTicksLimit: 6,
+              precision: 0,
               align: 'outer',
               padding: 4,
               maxRotation: 0,
@@ -459,6 +463,7 @@ const kpiActualTargetChart = () => {
             },
             ticks: {
               maxTicksLimit: 6,
+              precision: 0,
               align: 'outer',
               padding: 4,
               maxRotation: 0,
@@ -481,6 +486,7 @@ const kpiActualTargetChart = () => {
             },
             ticks: {
               maxTicksLimit: 6,
+              precision: 0,
               align: 'outer',
               padding: 4,
               maxRotation: 0,
