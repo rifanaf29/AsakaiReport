@@ -44,6 +44,14 @@ class CapaActionPlan extends Model
     }
 
     /**
+     * Get the problem through the cause (accessor).
+     */
+    public function getProblemAttribute(): ?CapaProblem
+    {
+        return $this->cause ? $this->cause->problem : null;
+    }
+
+    /**
      * Get the PIC (Person In Charge) for this action plan.
      */
     public function pic(): BelongsTo

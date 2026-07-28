@@ -129,13 +129,18 @@ class CapaProblemController extends Controller
 
         $user = auth()->user();
         // Load area first to access department
-        $problem->load(['area.department', 'creator', 'causes', 'actionPlans']);
-        
+        $problem->load(['area.department', 'creator', 'causes.actionPlans', 'actionPlans']);
+
         if ($problem->area && !$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
 
-        return view('capa.problems.show', compact('problem'));
+        $areas = CapaArea::active()
+            ->where('department_id', $problem->area?->department_id)
+            ->orderBy('area_name')
+            ->get();
+
+        return view('capa.problems.show', compact('problem', 'areas'));
     }
 
     /**
@@ -196,6 +201,7 @@ class CapaProblemController extends Controller
         }
 
         $problem->update([
+            'capa_area_id' => $validated['capa_area_id'],
             'problem_description' => $validated['problem_description'],
             'severity' => $validated['severity'],
         ]);

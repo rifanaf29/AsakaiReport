@@ -68,14 +68,14 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                         <div>
                             <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Department</div>
-                            <div class="font-semibold">{{ $problem->department->name }}</div>
+                            <div class="font-semibold">{{ $problem->department?->name ?? '-' }}</div>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-600 dark:text-gray-400 mb-2">Area</label>
                             <select name="capa_area_id" required class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                                @foreach(\App\Models\CapaArea::where('department_id', $problem->department->id)->get() as $area)
+                                @foreach($areas as $area)
                                     <option value="{{ $area->id }}" {{ $problem->capa_area_id == $area->id ? 'selected' : '' }}>
-                                        {{ $area->name }}
+                                        {{ $area->area_name }}
                                     </option>
                                 @endforeach
                             </select>
@@ -141,7 +141,8 @@
                                     </div>
                                     <div>
                                         <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Cause Type</label>
-                                        <select name="cause_type" required class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 text-sm">
+                                        <select name="cause_type" class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 text-sm">
+                                            <option value="" {{ $cause->cause_type ? '' : 'selected' }}>- Not set -</option>
                                             <option value="Man" {{ $cause->cause_type == 'Man' ? 'selected' : '' }}>Man</option>
                                             <option value="Machine" {{ $cause->cause_type == 'Machine' ? 'selected' : '' }}>Machine</option>
                                             <option value="Material" {{ $cause->cause_type == 'Material' ? 'selected' : '' }}>Material</option>
@@ -150,18 +151,19 @@
                                         </select>
                                     </div>
                                 </div>
+                            </form>
 
-                                <!-- Action Plans for this Cause -->
-                                <div class="mt-4 pl-4 border-l-2 border-blue-200 dark:border-blue-800">
-                                    <div class="flex justify-between items-center mb-2">
-                                        <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Action Plans ({{ $cause->actionPlans->count() }})</h5>
-                                        @can('create capa')
-                                            <button type="button" onclick="addActionPlan({{ $cause->id }})" class="text-green-600 hover:text-green-800 text-xs">
-                                                + Add Action
-                                            </button>
-                                        @endcan
-                                    </div>
-                                    <div class="space-y-2 action-plans-container" data-cause-id="{{ $cause->id }}">
+                            <!-- Action Plans for this Cause (outside the cause form: nested forms are dropped by the browser) -->
+                            <div class="mt-4 pl-4 border-l-2 border-blue-200 dark:border-blue-800">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h5 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Action Plans ({{ $cause->actionPlans->count() }})</h5>
+                                    @can('create capa')
+                                        <button type="button" onclick="addActionPlan({{ $cause->id }})" class="text-green-600 hover:text-green-800 text-xs">
+                                            + Add Action
+                                        </button>
+                                    @endcan
+                                </div>
+                                <div class="space-y-2 action-plans-container" data-cause-id="{{ $cause->id }}">
                                         @foreach($cause->actionPlans as $plan)
                                             <div class="p-3 bg-gray-50 dark:bg-gray-900 rounded action-item" data-action-id="{{ $plan->id }}">
                                                 <form class="action-form" onsubmit="updateAction(event, {{ $plan->id }})">
@@ -202,10 +204,9 @@
                                                     </div>
                                                 </form>
                                             </div>
-                                        @endforeach
-                                    </div>
+                                    @endforeach
                                 </div>
-                            </form>
+                            </div>
                         </div>
                     @empty
                         <p class="text-gray-500 dark:text-gray-400 text-center py-4">No root causes added yet.</p>
@@ -232,7 +233,8 @@
                     </div>
                     <div>
                         <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Cause Type</label>
-                        <select name="cause_type" required class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 text-sm">
+                        <select name="cause_type" class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 text-sm">
+                            <option value="">- Not set -</option>
                             <option value="Man">Man</option>
                             <option value="Machine">Machine</option>
                             <option value="Material">Material</option>
@@ -250,78 +252,65 @@
             document.getElementById('causes-container').appendChild(form);
         }
 
-        async function createCause(event) {
-            event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
-            formData.append('capa_problem_id', {{ $problem->id }});
-
+        /** POST to a CAPA endpoint and surface the server's validation message on failure. */
+        async function capaSubmit(url, body) {
             try {
-                const response = await fetch('{{ route("capa.causes.store") }}', {
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': '{{ csrf_token() }}',
                         'Accept': 'application/json',
                     },
-                    body: formData
+                    body: body
                 });
 
-                if (response.ok) {
-                    location.reload();
-                } else {
-                    alert('Error creating cause');
+                if (response.ok) return true;
+
+                let message = `Request failed (${response.status})`;
+                try {
+                    const data = await response.json();
+                    if (data.errors) {
+                        message = Object.values(data.errors).flat().join('\n');
+                    } else if (data.message) {
+                        message = data.message;
+                    }
+                } catch (e) {
+                    // Non-JSON error response (e.g. HTML error page) - keep the status message.
                 }
+                alert(message);
+                return false;
             } catch (error) {
                 alert('Error: ' + error.message);
+                return false;
+            }
+        }
+
+        async function createCause(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            formData.append('capa_problem_id', {{ $problem->id }});
+
+            if (await capaSubmit('{{ route("capa.causes.store") }}', formData)) {
+                location.reload();
             }
         }
 
         async function updateCause(event, causeId) {
             event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
+            const formData = new FormData(event.target);
             formData.append('_method', 'PUT');
 
-            try {
-                const response = await fetch(`/capa/causes/${causeId}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: formData
-                });
-
-                if (response.ok) {
-                    alert('Cause updated successfully');
-                } else {
-                    alert('Error updating cause');
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
+            if (await capaSubmit(`/capa/causes/${causeId}`, formData)) {
+                alert('Cause updated successfully');
             }
         }
 
         async function deleteCause(causeId) {
             if (!confirm('Are you sure you want to delete this cause and all its action plans?')) return;
 
-            try {
-                const response = await fetch(`/capa/causes/${causeId}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: new URLSearchParams({ '_method': 'DELETE' })
-                });
-
-                if (response.ok) {
-                    location.reload();
-                } else {
-                    alert('Error deleting cause');
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
+            const body = new URLSearchParams({ '_method': 'DELETE' });
+            if (await capaSubmit(`/capa/causes/${causeId}`, body)) {
+                location.reload();
             }
         }
 
@@ -371,77 +360,31 @@
 
         async function createAction(event, causeId) {
             event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
+            const formData = new FormData(event.target);
             formData.append('capa_cause_id', causeId);
 
-            try {
-                const response = await fetch('{{ route("capa.action-plans.store") }}', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: formData
-                });
-
-                if (response.ok) {
-                    location.reload();
-                } else {
-                    alert('Error creating action plan');
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
+            if (await capaSubmit('{{ route("capa.action-plans.store") }}', formData)) {
+                location.reload();
             }
         }
 
         async function updateAction(event, actionId) {
             event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
+            const formData = new FormData(event.target);
             formData.append('_method', 'PUT');
 
-            try {
-                const response = await fetch(`/capa/action-plans/${actionId}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: formData
-                });
-
-                if (response.ok) {
-                    alert('Action plan updated successfully');
-                    location.reload();
-                } else {
-                    alert('Error updating action plan');
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
+            if (await capaSubmit(`/capa/action-plans/${actionId}`, formData)) {
+                alert('Action plan updated successfully');
+                location.reload();
             }
         }
 
         async function deleteAction(actionId) {
             if (!confirm('Are you sure you want to delete this action plan?')) return;
 
-            try {
-                const response = await fetch(`/capa/action-plans/${actionId}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                        'Accept': 'application/json',
-                    },
-                    body: new URLSearchParams({ '_method': 'DELETE' })
-                });
-
-                if (response.ok) {
-                    location.reload();
-                } else {
-                    alert('Error deleting action plan');
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
+            const body = new URLSearchParams({ '_method': 'DELETE' });
+            if (await capaSubmit(`/capa/action-plans/${actionId}`, body)) {
+                location.reload();
             }
         }
     </script>

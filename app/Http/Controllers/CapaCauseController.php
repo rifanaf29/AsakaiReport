@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Gate;
 
 class CapaCauseController extends Controller
 {
+    /** Cause types supported by the capa_causes.cause_type column. */
+    private const CAUSE_TYPES = 'Man,Machine,Material,Method,Environment';
+
     /**
      * Show the form for creating a new cause.
      */
@@ -18,11 +21,11 @@ class CapaCauseController extends Controller
 
         $problemId = $request->get('problem_id');
         $problem = null;
+        $user = auth()->user();
 
         if ($problemId) {
             $problem = CapaProblem::with('area')->findOrFail($problemId);
-            $user = auth()->user();
-            
+
             if (!$user->canAccessDepartment($problem->area->department_id)) {
                 abort(403);
             }
@@ -33,13 +36,7 @@ class CapaCauseController extends Controller
             }
         }
 
-        $user = auth()->user();
-        $problems = CapaProblem::where('status', '!=', 'Closed')
-            ->when(!$user->can_access_all_departments, function ($q) use ($user) {
-                return $q->where('department_id', $user->department_id);
-            })
-            ->latest()
-            ->get();
+        $problems = $this->openProblemsFor($user);
 
         return view('capa.causes.create', compact('problems', 'problem'));
     }
@@ -53,10 +50,8 @@ class CapaCauseController extends Controller
 
         $validated = $request->validate([
             'capa_problem_id' => 'required|exists:capa_problems,id',
-            'cause_category' => 'required|in:Man,Machine,Material,Method,Environment,Other',
             'cause_description' => 'required|string|max:1000',
-            'analysis_method' => 'required|in:5 Whys,Fishbone,Pareto,FMEA,Other',
-            'corrective_action' => 'nullable|string|max:1000',
+            'cause_type' => 'nullable|in:' . self::CAUSE_TYPES,
         ]);
 
         // Verify problem access
@@ -68,21 +63,18 @@ class CapaCauseController extends Controller
         }
 
         if ($problem->status === 'Closed') {
-            return redirect()->route('capa.problems.show', $problem)
-                ->with('error', 'Cannot add causes to a closed problem.');
+            return $this->respond($request, $problem, 'Cannot add causes to a closed problem.', 'error');
         }
 
-        $cause = CapaCause::create([
+        CapaCause::create([
             'capa_problem_id' => $validated['capa_problem_id'],
-            'cause_category' => $validated['cause_category'],
             'cause_description' => $validated['cause_description'],
-            'analysis_method' => $validated['analysis_method'],
-            'corrective_action' => $validated['corrective_action'],
+            'cause_type' => $validated['cause_type'] ?? null,
+            'sort_order' => $problem->causes()->count(),
             'created_by' => $user->id,
         ]);
 
-        return redirect()->route('capa.problems.show', $problem)
-            ->with('success', 'Root cause added successfully.');
+        return $this->respond($request, $problem, 'Root cause added successfully.');
     }
 
     /**
@@ -93,12 +85,11 @@ class CapaCauseController extends Controller
         Gate::authorize('view capa');
 
         $user = auth()->user();
-        $cause->load('problem.area');
+        $cause->load(['problem.area.department', 'creator', 'actionPlans']);
+
         if (!$user->canAccessDepartment($cause->problem->area->department_id)) {
             abort(403);
         }
-
-        $cause->load(['problem.area', 'problem.department', 'creator']);
 
         return view('capa.causes.show', compact('cause'));
     }
@@ -138,27 +129,26 @@ class CapaCauseController extends Controller
         }
 
         if ($cause->problem->status === 'Closed') {
-            return redirect()->route('capa.causes.show', $cause)
-                ->with('error', 'Cannot edit causes of a closed problem.');
+            return $this->respond($request, $cause->problem, 'Cannot edit causes of a closed problem.', 'error');
         }
 
         $validated = $request->validate([
-            'cause_category' => 'required|in:Man,Machine,Material,Method,Environment,Other',
             'cause_description' => 'required|string|max:1000',
-            'analysis_method' => 'required|in:5 Whys,Fishbone,Pareto,FMEA,Other',
-            'corrective_action' => 'nullable|string|max:1000',
+            'cause_type' => 'nullable|in:' . self::CAUSE_TYPES,
         ]);
 
-        $cause->update($validated);
+        $cause->update([
+            'cause_description' => $validated['cause_description'],
+            'cause_type' => $validated['cause_type'] ?: null,
+        ]);
 
-        return redirect()->route('capa.problems.show', $cause->problem)
-            ->with('success', 'Root cause updated successfully.');
+        return $this->respond($request, $cause->problem, 'Root cause updated successfully.');
     }
 
     /**
      * Remove the specified cause.
      */
-    public function destroy(CapaCause $cause)
+    public function destroy(Request $request, CapaCause $cause)
     {
         Gate::authorize('delete capa');
 
@@ -169,14 +159,41 @@ class CapaCauseController extends Controller
         }
 
         if ($cause->problem->status === 'Closed') {
-            return redirect()->route('capa.problems.show', $cause->problem)
-                ->with('error', 'Cannot delete causes of a closed problem.');
+            return $this->respond($request, $cause->problem, 'Cannot delete causes of a closed problem.', 'error');
         }
 
         $problem = $cause->problem;
         $cause->delete();
 
-        return redirect()->route('capa.problems.show', $problem)
-            ->with('success', 'Root cause deleted successfully.');
+        return $this->respond($request, $problem, 'Root cause deleted successfully.');
+    }
+
+    /**
+     * Problems the user may attach causes to (status is derived, so it is filtered in PHP).
+     */
+    private function openProblemsFor($user)
+    {
+        return CapaProblem::with(['area', 'causes.actionPlans'])
+            ->when(!$user->can_access_all_departments, function ($q) use ($user) {
+                return $q->whereHas('area', function ($a) use ($user) {
+                    $a->where('department_id', $user->department_id);
+                });
+            })
+            ->latest()
+            ->get()
+            ->reject(fn (CapaProblem $problem) => $problem->status === 'Closed')
+            ->values();
+    }
+
+    /**
+     * JSON for the inline editor on the problem page, redirect for full page forms.
+     */
+    private function respond(Request $request, CapaProblem $problem, string $message, string $type = 'success')
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message], $type === 'success' ? 200 : 422);
+        }
+
+        return redirect()->route('capa.problems.show', $problem)->with($type, $message);
     }
 }

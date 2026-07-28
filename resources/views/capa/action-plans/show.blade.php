@@ -50,11 +50,14 @@
                     <div class="text-gray-700 dark:text-gray-300 mb-2">{{ $actionPlan->problem->problem_description }}</div>
                     <div class="flex space-x-4 text-sm">
                         <span class="text-gray-600 dark:text-gray-400">
-                            <span class="font-medium">Department:</span> {{ $actionPlan->problem->department->name }}
+                            <span class="font-medium">Department:</span> {{ $actionPlan->problem->department?->name ?? '-' }}
                         </span>
                         <span class="text-gray-600 dark:text-gray-400">
-                            <span class="font-medium">Area:</span> {{ $actionPlan->problem->area->name }}
+                            <span class="font-medium">Area:</span> {{ $actionPlan->problem->area?->area_name ?? '-' }}
                         </span>
+                    </div>
+                    <div class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        <span class="font-medium">Root Cause:</span> {{ $actionPlan->cause->cause_description }}
                     </div>
                 </div>
             </div>
@@ -64,19 +67,12 @@
                 <div class="flex justify-between items-start mb-6">
                     <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200">Action Plan Information</h3>
                     <div class="flex space-x-2">
-                        <span class="px-3 py-1 text-sm font-semibold rounded-full 
-                            @if($actionPlan->action_type == 'Corrective') bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300
-                            @else bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300
-                            @endif">
-                            {{ $actionPlan->action_type }}
-                        </span>
-                        <span class="px-3 py-1 text-sm font-semibold rounded-full 
-                            @if($actionPlan->status == 'Completed') bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300
-                            @elseif($actionPlan->status == 'In Progress') bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300
-                            @elseif($actionPlan->status == 'Cancelled') bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300
+                        <span class="px-3 py-1 text-sm font-semibold rounded-full
+                            @if($actionPlan->status == 'close') bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300
+                            @elseif($actionPlan->status == 'progress') bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300
                             @else bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300
                             @endif">
-                            {{ $actionPlan->status }}
+                            {{ ['open' => 'Open', 'progress' => 'In Progress', 'close' => 'Closed'][$actionPlan->status] ?? $actionPlan->status }}
                         </span>
                     </div>
                 </div>
@@ -84,44 +80,44 @@
                 <div class="mb-6">
                     <div class="text-sm text-gray-600 dark:text-gray-400 mb-2">Action Description</div>
                     <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
-                        {{ $actionPlan->action_description }}
+                        {{ $actionPlan->description }}
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div>
-                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Responsible Person</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Person in Charge</div>
                         <div class="p-3 bg-blue-50 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-md font-semibold">
-                            {{ $actionPlan->responsible_person }}
+                            {{ $actionPlan->person_in_charge ?: '-' }}
                         </div>
                     </div>
                     <div>
                         <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Due Date</div>
-                        <div class="p-3 {{ $actionPlan->due_date->isPast() && $actionPlan->status != 'Completed' ? 'bg-red-50 dark:bg-red-900 text-red-800 dark:text-red-200' : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200' }} rounded-md font-semibold">
-                            {{ $actionPlan->due_date->format('Y-m-d') }}
-                            @if($actionPlan->due_date->isPast() && $actionPlan->status != 'Completed')
+                        <div class="p-3 {{ $actionPlan->isOverdue() ? 'bg-red-50 dark:bg-red-900 text-red-800 dark:text-red-200' : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200' }} rounded-md font-semibold">
+                            {{ $actionPlan->due_date?->format('Y-m-d') ?? '-' }}
+                            @if($actionPlan->isOverdue())
                                 <span class="text-xs">(Overdue)</span>
                             @endif
                         </div>
                     </div>
                 </div>
 
-                @if($actionPlan->completion_criteria)
+                @if($actionPlan->keterangan)
                 <div class="mb-6">
-                    <div class="text-sm text-gray-600 dark:text-gray-400 mb-2">Completion Criteria</div>
+                    <div class="text-sm text-gray-600 dark:text-gray-400 mb-2">Keterangan</div>
                     <div class="p-4 bg-purple-50 dark:bg-purple-900 rounded-lg text-purple-800 dark:text-purple-200 whitespace-pre-wrap">
-                        {{ $actionPlan->completion_criteria }}
+                        {{ $actionPlan->keterangan }}
                     </div>
                 </div>
                 @endif
 
-                @if($actionPlan->status == 'Completed' && $actionPlan->completion_date)
+                @if($actionPlan->status == 'close' && $actionPlan->completed_date)
                 <div class="mb-6 p-4 bg-green-50 dark:bg-green-900 border border-green-200 dark:border-green-700 rounded-lg">
                     <div class="flex items-center mb-2">
                         <svg class="w-6 h-6 text-green-600 dark:text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
                         </svg>
-                        <div class="font-semibold text-green-800 dark:text-green-200">Completed on {{ $actionPlan->completion_date->format('Y-m-d') }}</div>
+                        <div class="font-semibold text-green-800 dark:text-green-200">Completed on {{ $actionPlan->completed_date->format('Y-m-d') }}</div>
                     </div>
                     @if($actionPlan->completion_notes)
                         <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Completion Notes</div>

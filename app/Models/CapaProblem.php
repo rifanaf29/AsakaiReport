@@ -18,7 +18,7 @@ class CapaProblem extends Model
         'problem_description',
         'severity',
         'sort_order',
-        'created_by',0
+        'created_by',
     ];
 
     protected $casts = [

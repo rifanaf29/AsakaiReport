@@ -50,10 +50,10 @@
                     <div class="text-gray-700 dark:text-gray-300 mb-2">{{ $cause->problem->problem_description }}</div>
                     <div class="flex space-x-4 text-sm">
                         <span class="text-gray-600 dark:text-gray-400">
-                            <span class="font-medium">Department:</span> {{ $cause->problem->department->name }}
+                            <span class="font-medium">Department:</span> {{ $cause->problem->department?->name ?? '-' }}
                         </span>
                         <span class="text-gray-600 dark:text-gray-400">
-                            <span class="font-medium">Area:</span> {{ $cause->problem->area->name }}
+                            <span class="font-medium">Area:</span> {{ $cause->problem->area?->area_name ?? '-' }}
                         </span>
                     </div>
                 </div>
@@ -65,15 +65,9 @@
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div>
-                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Cause Category</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Cause Type (5M)</div>
                         <div class="p-3 bg-blue-50 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-md font-semibold">
-                            {{ $cause->cause_category }}
-                        </div>
-                    </div>
-                    <div>
-                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-1">Analysis Method</div>
-                        <div class="p-3 bg-purple-50 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded-md font-semibold">
-                            {{ $cause->analysis_method }}
+                            {{ $cause->cause_type ?: '- Not set -' }}
                         </div>
                     </div>
                 </div>
@@ -85,14 +79,29 @@
                     </div>
                 </div>
 
-                @if($cause->corrective_action)
                 <div class="mb-6">
-                    <div class="text-sm text-gray-600 dark:text-gray-400 mb-2">Corrective Action</div>
-                    <div class="p-4 bg-green-50 dark:bg-green-900 rounded-lg text-green-800 dark:text-green-200 whitespace-pre-wrap">
-                        {{ $cause->corrective_action }}
-                    </div>
+                    <div class="text-sm text-gray-600 dark:text-gray-400 mb-2">Action Plans ({{ $cause->actionPlans->count() }})</div>
+                    @forelse($cause->actionPlans as $plan)
+                        <div class="mb-2 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <div class="flex justify-between items-start gap-4">
+                                <div class="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{{ $plan->description }}</div>
+                                <span class="shrink-0 px-3 py-1 text-xs font-semibold rounded-full
+                                    @if($plan->status == 'close') bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300
+                                    @elseif($plan->status == 'progress') bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300
+                                    @else bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200
+                                    @endif">
+                                    {{ ['open' => 'Open', 'progress' => 'In Progress', 'close' => 'Closed'][$plan->status] ?? $plan->status }}
+                                </span>
+                            </div>
+                            <div class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                                <span class="font-medium">PIC:</span> {{ $plan->person_in_charge ?: '-' }}
+                                <span class="ml-4 font-medium">Due:</span> {{ $plan->due_date?->format('Y-m-d') ?? '-' }}
+                            </div>
+                        </div>
+                    @empty
+                        <p class="text-gray-500 dark:text-gray-400">No action plans yet.</p>
+                    @endforelse
                 </div>
-                @endif
 
                 <!-- Record Information -->
                 <div class="pt-6 border-t border-gray-200 dark:border-gray-700">

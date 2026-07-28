@@ -3,14 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Models\CapaActionPlan;
+use App\Models\CapaCause;
 use App\Models\CapaProblem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 
 class CapaActionPlanController extends Controller
 {
+    /** Values supported by the capa_action_plans.status enum. */
+    private const STATUSES = 'open,progress,close';
+
     /**
-     * Show the form for creating a new action plan.
+     * Show the form for creating a new action plan. Plans hang off a cause, not a problem,
+     * so the form picks a root cause (optionally narrowed by ?problem_id=).
      */
     public function create(Request $request)
     {
@@ -18,11 +23,11 @@ class CapaActionPlanController extends Controller
 
         $problemId = $request->get('problem_id');
         $problem = null;
+        $user = auth()->user();
 
         if ($problemId) {
-            $problem = CapaProblem::with('area')->findOrFail($problemId);
-            $user = auth()->user();
-            
+            $problem = CapaProblem::with(['area', 'causes.actionPlans'])->findOrFail($problemId);
+
             if (!$user->canAccessDepartment($problem->area->department_id)) {
                 abort(403);
             }
@@ -33,15 +38,21 @@ class CapaActionPlanController extends Controller
             }
         }
 
-        $user = auth()->user();
-        $problems = CapaProblem::where('status', '!=', 'Closed')
+        $causes = CapaCause::with(['problem.area', 'problem.causes.actionPlans'])
+            ->when($problem, fn ($q) => $q->where('capa_problem_id', $problem->id))
             ->when(!$user->can_access_all_departments, function ($q) use ($user) {
-                return $q->where('department_id', $user->department_id);
+                return $q->whereHas('problem.area', function ($a) use ($user) {
+                    $a->where('department_id', $user->department_id);
+                });
             })
-            ->latest()
-            ->get();
+            ->latest('id')
+            ->get()
+            ->reject(fn (CapaCause $cause) => $cause->problem?->status === 'Closed')
+            ->values();
 
-        return view('capa.action-plans.create', compact('problems', 'problem'));
+        $selectedCauseId = $request->get('cause_id');
+
+        return view('capa.action-plans.create', compact('causes', 'problem', 'selectedCauseId'));
     }
 
     /**
@@ -52,16 +63,16 @@ class CapaActionPlanController extends Controller
         Gate::authorize('create capa');
 
         $validated = $request->validate([
-            'capa_problem_id' => 'required|exists:capa_problems,id',
-            'action_type' => 'required|in:Corrective,Preventive',
-            'action_description' => 'required|string|max:1000',
-            'responsible_person' => 'required|string|max:255',
+            'capa_cause_id' => 'required|exists:capa_causes,id',
+            'description' => 'required|string|max:1000',
+            'person_in_charge' => 'required|string|max:255',
             'due_date' => 'required|date',
-            'completion_criteria' => 'nullable|string|max:500',
+            'status' => 'nullable|in:' . self::STATUSES,
+            'keterangan' => 'nullable|string|max:1000',
         ]);
 
-        // Verify problem access
-        $problem = CapaProblem::with('area')->findOrFail($validated['capa_problem_id']);
+        $cause = CapaCause::with('problem.area')->findOrFail($validated['capa_cause_id']);
+        $problem = $cause->problem;
         $user = auth()->user();
 
         if (!$user->canAccessDepartment($problem->area->department_id)) {
@@ -69,23 +80,22 @@ class CapaActionPlanController extends Controller
         }
 
         if ($problem->status === 'Closed') {
-            return redirect()->route('capa.problems.show', $problem)
-                ->with('error', 'Cannot add action plans to a closed problem.');
+            return $this->respond($request, $problem, 'Cannot add action plans to a closed problem.', 'error');
         }
 
-        $actionPlan = CapaActionPlan::create([
-            'capa_problem_id' => $validated['capa_problem_id'],
-            'action_type' => $validated['action_type'],
-            'action_description' => $validated['action_description'],
-            'responsible_person' => $validated['responsible_person'],
+        CapaActionPlan::create([
+            'capa_cause_id' => $cause->id,
+            'description' => $validated['description'],
+            'person_in_charge' => $validated['person_in_charge'],
             'due_date' => $validated['due_date'],
-            'status' => 'Pending',
-            'completion_criteria' => $validated['completion_criteria'],
+            'keterangan' => $validated['keterangan'] ?? null,
+            'status' => $validated['status'] ?? 'open',
+            'progress_percentage' => 0,
+            'sort_order' => $cause->actionPlans()->count(),
             'created_by' => $user->id,
         ]);
 
-        return redirect()->route('capa.problems.show', $problem)
-            ->with('success', 'Action plan added successfully.');
+        return $this->respond($request, $problem, 'Action plan added successfully.');
     }
 
     /**
@@ -96,12 +106,11 @@ class CapaActionPlanController extends Controller
         Gate::authorize('view capa');
 
         $user = auth()->user();
-        $actionPlan->load('problem.area');
-        if (!$user->canAccessDepartment($actionPlan->problem->area->department_id)) {
+        $actionPlan->load(['cause.problem.area.department', 'creator']);
+
+        if (!$user->canAccessDepartment($actionPlan->cause->problem->area->department_id)) {
             abort(403);
         }
-
-        $actionPlan->load(['problem.area', 'problem.department', 'creator']);
 
         return view('capa.action-plans.show', compact('actionPlan'));
     }
@@ -114,12 +123,12 @@ class CapaActionPlanController extends Controller
         Gate::authorize('edit capa');
 
         $user = auth()->user();
-        $actionPlan->load('problem.area');
-        if (!$user->canAccessDepartment($actionPlan->problem->area->department_id)) {
+        $actionPlan->load('cause.problem.area');
+        if (!$user->canAccessDepartment($actionPlan->cause->problem->area->department_id)) {
             abort(403);
         }
 
-        if ($actionPlan->problem->status === 'Closed') {
+        if ($actionPlan->cause->problem->status === 'Closed') {
             return redirect()->route('capa.action-plans.show', $actionPlan)
                 ->with('error', 'Cannot edit action plans of a closed problem.');
         }
@@ -135,60 +144,78 @@ class CapaActionPlanController extends Controller
         Gate::authorize('edit capa');
 
         $user = auth()->user();
-        $actionPlan->load('problem.area');
-        if (!$user->canAccessDepartment($actionPlan->problem->area->department_id)) {
+        $actionPlan->load('cause.problem.area');
+        $problem = $actionPlan->cause->problem;
+
+        if (!$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
 
-        if ($actionPlan->problem->status === 'Closed') {
-            return redirect()->route('capa.action-plans.show', $actionPlan)
-                ->with('error', 'Cannot edit action plans of a closed problem.');
+        // A problem reads as "Closed" only while every one of its plans is closed. Reopening a
+        // plan is therefore allowed; any other edit stays blocked so a finished CAPA is frozen.
+        if ($problem->status === 'Closed' && $request->input('status') === 'close') {
+            return $this->respond($request, $problem, 'Cannot edit action plans of a closed problem. Reopen the plan first.', 'error');
         }
 
         $validated = $request->validate([
-            'action_type' => 'required|in:Corrective,Preventive',
-            'action_description' => 'required|string|max:1000',
-            'responsible_person' => 'required|string|max:255',
+            'description' => 'required|string|max:1000',
+            'person_in_charge' => 'required|string|max:255',
             'due_date' => 'required|date',
-            'status' => 'required|in:Pending,In Progress,Completed,Cancelled',
-            'completion_date' => 'nullable|date',
+            'status' => 'required|in:' . self::STATUSES,
+            'keterangan' => 'nullable|string|max:1000',
+            'completed_date' => 'nullable|date',
             'completion_notes' => 'nullable|string|max:1000',
-            'completion_criteria' => 'nullable|string|max:500',
         ]);
 
-        // Set completion date if status is completed and no date provided
-        if ($validated['status'] === 'Completed' && empty($validated['completion_date'])) {
-            $validated['completion_date'] = now();
+        // Stamp the completion date the first time a plan is closed.
+        if ($validated['status'] === 'close' && empty($validated['completed_date']) && !$actionPlan->completed_date) {
+            $validated['completed_date'] = now();
         }
+
+        if ($validated['status'] !== 'close') {
+            $validated['completed_date'] = null;
+        }
+
+        $validated['updated_by'] = $user->id;
 
         $actionPlan->update($validated);
 
-        return redirect()->route('capa.problems.show', $actionPlan->problem)
-            ->with('success', 'Action plan updated successfully.');
+        return $this->respond($request, $problem, 'Action plan updated successfully.');
     }
 
     /**
      * Remove the specified action plan.
      */
-    public function destroy(CapaActionPlan $actionPlan)
+    public function destroy(Request $request, CapaActionPlan $actionPlan)
     {
         Gate::authorize('delete capa');
 
         $user = auth()->user();
-        $actionPlan->load('problem.area');
-        if (!$user->canAccessDepartment($actionPlan->problem->area->department_id)) {
+        $actionPlan->load('cause.problem.area');
+        $problem = $actionPlan->cause->problem;
+
+        if (!$user->canAccessDepartment($problem->area->department_id)) {
             abort(403);
         }
 
-        if ($actionPlan->problem->status === 'Closed') {
-            return redirect()->route('capa.problems.show', $actionPlan->problem)
-                ->with('error', 'Cannot delete action plans of a closed problem.');
+        if ($problem->status === 'Closed') {
+            return $this->respond($request, $problem, 'Cannot delete action plans of a closed problem.', 'error');
         }
 
-        $problem = $actionPlan->problem;
         $actionPlan->delete();
 
-        return redirect()->route('capa.problems.show', $problem)
-            ->with('success', 'Action plan deleted successfully.');
+        return $this->respond($request, $problem, 'Action plan deleted successfully.');
+    }
+
+    /**
+     * JSON for the inline editor on the problem page, redirect for full page forms.
+     */
+    private function respond(Request $request, CapaProblem $problem, string $message, string $type = 'success')
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message], $type === 'success' ? 200 : 422);
+        }
+
+        return redirect()->route('capa.problems.show', $problem)->with($type, $message);
     }
 }

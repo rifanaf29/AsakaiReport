@@ -39,41 +39,22 @@
                             @enderror
                         </div>
 
-                        <!-- Cause Category & Analysis Method -->
+                        <!-- Cause Type -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                             <div>
-                                <label for="cause_category" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Cause Category (5M) <span class="text-red-500">*</span>
+                                <label for="cause_type" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Cause Type (5M)
                                 </label>
-                                <select id="cause_category" name="cause_category" required
+                                <select id="cause_type" name="cause_type"
                                         class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                    <option value="">Select category...</option>
-                                    <option value="Man" {{ old('cause_category') == 'Man' ? 'selected' : '' }}>Man (Human)</option>
-                                    <option value="Machine" {{ old('cause_category') == 'Machine' ? 'selected' : '' }}>Machine (Equipment)</option>
-                                    <option value="Material" {{ old('cause_category') == 'Material' ? 'selected' : '' }}>Material</option>
-                                    <option value="Method" {{ old('cause_category') == 'Method' ? 'selected' : '' }}>Method (Process)</option>
-                                    <option value="Environment" {{ old('cause_category') == 'Environment' ? 'selected' : '' }}>Environment</option>
-                                    <option value="Other" {{ old('cause_category') == 'Other' ? 'selected' : '' }}>Other</option>
+                                    <option value="">- Not set -</option>
+                                    <option value="Man" {{ old('cause_type') == 'Man' ? 'selected' : '' }}>Man (Human)</option>
+                                    <option value="Machine" {{ old('cause_type') == 'Machine' ? 'selected' : '' }}>Machine (Equipment)</option>
+                                    <option value="Material" {{ old('cause_type') == 'Material' ? 'selected' : '' }}>Material</option>
+                                    <option value="Method" {{ old('cause_type') == 'Method' ? 'selected' : '' }}>Method (Process)</option>
+                                    <option value="Environment" {{ old('cause_type') == 'Environment' ? 'selected' : '' }}>Environment</option>
                                 </select>
-                                @error('cause_category')
-                                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
-                            </div>
-
-                            <div>
-                                <label for="analysis_method" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    Analysis Method <span class="text-red-500">*</span>
-                                </label>
-                                <select id="analysis_method" name="analysis_method" required
-                                        class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500">
-                                    <option value="">Select method...</option>
-                                    <option value="5 Whys" {{ old('analysis_method') == '5 Whys' ? 'selected' : '' }}>5 Whys</option>
-                                    <option value="Fishbone" {{ old('analysis_method') == 'Fishbone' ? 'selected' : '' }}>Fishbone Diagram</option>
-                                    <option value="Pareto" {{ old('analysis_method') == 'Pareto' ? 'selected' : '' }}>Pareto Analysis</option>
-                                    <option value="FMEA" {{ old('analysis_method') == 'FMEA' ? 'selected' : '' }}>FMEA</option>
-                                    <option value="Other" {{ old('analysis_method') == 'Other' ? 'selected' : '' }}>Other</option>
-                                </select>
-                                @error('analysis_method')
+                                @error('cause_type')
                                     <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                                 @enderror
                             </div>
@@ -88,20 +69,6 @@
                                       class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
                                       placeholder="Describe the root cause in detail...">{{ old('cause_description') }}</textarea>
                             @error('cause_description')
-                                <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                            @enderror
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Maximum 1000 characters</p>
-                        </div>
-
-                        <!-- Corrective Action -->
-                        <div class="mb-6">
-                            <label for="corrective_action" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Corrective Action (Optional)
-                            </label>
-                            <textarea id="corrective_action" name="corrective_action" rows="4"
-                                      class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                                      placeholder="Describe the corrective action for this cause...">{{ old('corrective_action') }}</textarea>
-                            @error('corrective_action')
                                 <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                             @enderror
                             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Maximum 1000 characters</p>
