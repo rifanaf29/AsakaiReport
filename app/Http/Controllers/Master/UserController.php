@@ -8,6 +8,7 @@ use App\Models\Department;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
@@ -67,25 +68,29 @@ class UserController extends Controller
     {
         Gate::authorize('create users');
 
+        // Only the name is required: SSO can match an account by name alone.
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-            'department_id' => 'required|exists:departments,id',
-            'role' => 'required|exists:roles,name',
+            'email' => 'nullable|string|email|max:255|unique:users',
+            'password' => 'nullable|string|min:8|confirmed',
+            'department_id' => 'nullable|exists:departments,id',
+            'role' => 'nullable|exists:roles,name',
             'can_access_all_departments' => 'boolean',
         ]);
 
         $user = User::create([
             'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'department_id' => $validated['department_id'],
+            'email' => $validated['email'] ?? null,
+            // No password given means the account signs in through SSO only.
+            'password' => Hash::make($validated['password'] ?? Str::random(40)),
+            'department_id' => $validated['department_id'] ?? null,
             'can_access_all_departments' => $request->has('can_access_all_departments'),
             'email_verified_at' => now(),
         ]);
 
-        $user->assignRole($validated['role']);
+        if (!empty($validated['role'])) {
+            $user->assignRole($validated['role']);
+        }
 
         return redirect()->route('master.users.index')
             ->with('success', 'User created successfully.');
@@ -123,19 +128,20 @@ class UserController extends Controller
     {
         Gate::authorize('edit users');
 
+        // Mirrors store(): an account created with a name only must stay editable.
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
+            'email' => 'nullable|string|email|max:255|unique:users,email,' . $user->id,
             'password' => 'nullable|string|min:8|confirmed',
-            'department_id' => 'required|exists:departments,id',
-            'role' => 'required|exists:roles,name',
+            'department_id' => 'nullable|exists:departments,id',
+            'role' => 'nullable|exists:roles,name',
             'can_access_all_departments' => 'boolean',
         ]);
 
         $userData = [
             'name' => $validated['name'],
-            'email' => $validated['email'],
-            'department_id' => $validated['department_id'],
+            'email' => $validated['email'] ?? null,
+            'department_id' => $validated['department_id'] ?? null,
             'can_access_all_departments' => $request->has('can_access_all_departments'),
         ];
 
@@ -145,7 +151,11 @@ class UserController extends Controller
         }
 
         $user->update($userData);
-        $user->syncRoles([$validated['role']]);
+
+        // Leave existing roles alone when the form sends no role.
+        if (!empty($validated['role'])) {
+            $user->syncRoles([$validated['role']]);
+        }
 
         return redirect()->route('master.users.index')
             ->with('success', 'User updated successfully.');

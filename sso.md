@@ -17,23 +17,32 @@ Document how the existing SSO login flow works so it can be recreated in other a
 - No issuer/audience checks are performed; only the signature (and any standard claims that `firebase/php-jwt` validates, like `exp` if present) are validated.
 
 ## Expected JWT payload
-The controller expects at least these claims in the decoded token body:
-- `email` – used to find or create the local user.
-- `name` – used to populate the local user name on first login.
+The controller expects at least one of these claims in the decoded token body:
+- `email` – primary identifier used to find the local user.
+- `name` – fallback identifier when `email` is absent or unknown locally; also populates the local user name when the account is created.
 
-Other claims are ignored.
+At least one of the two must be present. Other claims are ignored.
+
+## User matching order
+1. **By email** – exact match on `users.email` when the claim is present.
+2. **By name** – exact match on `users.name` when step 1 finds nothing. `users.email` is nullable so accounts can be registered with a name only.
+   - If the name matches **more than one** user the login is refused: the account is ambiguous and picking one could hand over the wrong account.
+   - If a single user matches and that user has no email while the token carries one, the email is written to the account so later logins take the faster email path.
+3. **Create** – no match at all creates a user from the claims with a random password (sign in through SSO only).
 
 ## Request flow (happy path)
 1. Identity provider issues a JWT signed with HS256 and the shared `JWT_SECRET` containing `email` and `name` claims.
 2. User is redirected to `/sso/login?token=<jwt>`.
 3. `SSOController@login` extracts `token` from the query string.
 4. `JwtService::decodeToken` calls `JWT::decode($token, new Key(env('JWT_SECRET'), 'HS256'))` to verify and decode.
-5. The app runs `User::firstOrCreate` on the decoded `email`, seeding `name` and a random password if the user does not yet exist.
+5. The app resolves the local user following the matching order above, creating one if nothing matches.
 6. `Auth::login($user)` logs the user into Laravel, then redirects to `/dashboard`.
 
 ## Error handling
 - Missing token ⇒ redirect `/login` with error message "SSO token missing".
 - Decode/validation failure ⇒ redirect `/login` with error message "Invalid or expired SSO token".
+- Payload without both `email` and `name` ⇒ redirect `/login` with error message "Invalid or expired SSO token".
+- Name matching more than one local user ⇒ redirect `/login` with error message "More than one account uses this name. Please contact the administrator."
 
 ## Security considerations
 - HS256 symmetric secret must be kept private and match across systems.

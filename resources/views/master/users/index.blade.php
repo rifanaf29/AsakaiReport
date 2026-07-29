@@ -120,7 +120,7 @@
                                 <div class="font-medium text-gray-800 dark:text-gray-100">{{ $user->name }}</div>
                             </td>
                             <td class="px-4 py-3">
-                                <div class="text-gray-600 dark:text-gray-400">{{ $user->email }}</div>
+                                <div class="text-gray-600 dark:text-gray-400">{{ $user->email ?: '-' }}</div>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <div class="text-gray-800 dark:text-gray-100">{{ $user->department->name ?? 'N/A' }}</div>

@@ -42,19 +42,19 @@
                     <!-- Email -->
                     <div>
                         <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Email Address <span class="text-red-500">*</span>
+                            Email Address
                         </label>
-                        <input 
-                            type="email" 
-                            name="email" 
-                            id="email" 
+                        <input
+                            type="email"
+                            name="email"
+                            id="email"
                             value="{{ old('email', $user->email) }}"
                             class="form-input w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 @error('email') border-red-500 @enderror"
-                            required
                         >
                         @error('email')
                         <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
                         @enderror
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Optional. Without an email, SSO matches this account by name.</p>
                     </div>
 
                     <!-- Password -->
@@ -90,13 +90,12 @@
                     <!-- Department -->
                     <div>
                         <label for="department_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Department <span class="text-red-500">*</span>
+                            Department
                         </label>
-                        <select 
-                            name="department_id" 
-                            id="department_id" 
+                        <select
+                            name="department_id"
+                            id="department_id"
                             class="form-select w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 @error('department_id') border-red-500 @enderror"
-                            required
                         >
                             <option value="">Select Department</option>
                             @foreach($departments as $dept)
@@ -113,13 +112,12 @@
                     <!-- Role -->
                     <div>
                         <label for="role" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Role <span class="text-red-500">*</span>
+                            Role
                         </label>
-                        <select 
-                            name="role" 
-                            id="role" 
+                        <select
+                            name="role"
+                            id="role"
                             class="form-select w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 @error('role') border-red-500 @enderror"
-                            required
                         >
                             <option value="">Select Role</option>
                             @foreach($roles as $role)

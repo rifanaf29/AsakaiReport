@@ -40,7 +40,7 @@
                             <!-- Email -->
                             <div class="flex items-start">
                                 <div class="w-32 text-sm font-medium text-gray-500 dark:text-gray-400">Email:</div>
-                                <div class="flex-1 text-sm text-gray-800 dark:text-gray-100">{{ $user->email }}</div>
+                                <div class="flex-1 text-sm text-gray-800 dark:text-gray-100">{{ $user->email ?: '-' }}</div>
                             </div>
 
                             <!-- Department -->

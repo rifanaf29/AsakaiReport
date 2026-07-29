@@ -44,11 +44,11 @@ class SSOController extends Controller
             return redirect()->route('login')->with('error', 'Invalid or expired SSO token');
         }
 
-        $email = $payload['email'] ?? null;
-        $name = $payload['name'] ?? null;
+        $email = trim((string) ($payload['email'] ?? '')) ?: null;
+        $name = trim((string) ($payload['name'] ?? '')) ?: null;
 
-        if (!$email) {
-            Log::warning('SSO login failed: payload missing email', [
+        if (!$email && !$name) {
+            Log::warning('SSO login failed: payload missing both email and name', [
                 'route' => 'sso.login',
                 'ip' => $request->ip(),
                 'token_prefix' => $maskedToken,
@@ -57,13 +57,46 @@ class SSOController extends Controller
             return redirect()->route('login')->with('error', 'Invalid or expired SSO token');
         }
 
-        $user = User::firstOrCreate(
-            ['email' => $email],
-            [
+        // Email is the reliable identifier; fall back to name for accounts registered
+        // without one. Names are not unique, so an ambiguous match must not log anyone in.
+        $matchedBy = 'email';
+        $user = $email ? User::where('email', $email)->first() : null;
+
+        if (!$user && $name) {
+            $byName = User::where('name', $name)->get();
+
+            if ($byName->count() > 1) {
+                Log::warning('SSO login failed: name matches multiple users', [
+                    'route' => 'sso.login',
+                    'ip' => $request->ip(),
+                    'token_prefix' => $maskedToken,
+                    'name' => $name,
+                    'user_ids' => $byName->pluck('id')->all(),
+                ]);
+                return redirect()->route('login')
+                    ->with('error', 'More than one account uses this name. Please contact the administrator.');
+            }
+
+            $user = $byName->first();
+
+            if ($user) {
+                $matchedBy = 'name';
+
+                // Attach the email so the next login matches on it instead of the name.
+                if ($email && !$user->email && !User::where('email', $email)->exists()) {
+                    $user->forceFill(['email' => $email])->save();
+                }
+            }
+        }
+
+        if (!$user) {
+            $matchedBy = 'created';
+            $user = User::create([
                 'name' => $name ?: $email,
+                'email' => $email,
                 'password' => Hash::make(Str::random(40)),
-            ]
-        );
+            ]);
+        }
 
         Auth::login($user);
 
@@ -73,6 +106,8 @@ class SSOController extends Controller
             'token_prefix' => $maskedToken,
             'user_id' => $user->id,
             'email' => $email,
+            'name' => $name,
+            'matched_by' => $matchedBy,
         ]);
 
         return redirect('/dashboard');
